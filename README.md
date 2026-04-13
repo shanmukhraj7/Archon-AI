@@ -3,7 +3,6 @@
 A company-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by LLMs, RAG, and an agentic orchestration loop.
 
 ---
-
 ## What It Does
 
 Give it a query like:
