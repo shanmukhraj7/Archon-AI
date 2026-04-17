@@ -1,8 +1,9 @@
-#  AI Research Assistant
+# AI Research Assistant
 
-A company-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by LLMs, RAG, and an agentic orchestration loop.
+A production-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by Claude (Anthropic), RAG, and a LangGraph agentic orchestration loop.
 
 ---
+
 ## What It Does
 
 Give it a query like:
@@ -10,10 +11,10 @@ Give it a query like:
 > "Analyze AI adoption trends in fintech for 2024–2025 and give me a structured report"
 
 It will:
-1. Break the query into sub-tasks
+1. Break the query into sub-tasks (planner node)
 2. Search the web for current information (via Tavily)
 3. Search your uploaded documents (via RAG + ChromaDB)
-4. Reason over retrieved context using an LLM
+4. Reason over retrieved context using Claude
 5. Produce a structured report with sections, tables, and a summary
 6. Let you export the report as a PDF
 
@@ -28,16 +29,16 @@ User Query
 Orchestrator Agent (LangGraph)
     │  ├── RAG Tool        → ChromaDB vector search (your docs)
     │  ├── Web Search Tool → Tavily Search API (live web)
-    │  └── LLM Reasoning  → Claude / GPT-4
+    │  └── LLM Reasoning  → Claude (claude-sonnet-4-20250514)
     │
     ▼
 Structured Output Engine
     │  ├── Markdown report (sections, tables, summary)
-    │  ├── PDF export
+    │  ├── PDF export (WeasyPrint)
     │  └── History store (SQLite)
     │
     ▼
-React Frontend (report viewer + upload panel)
+React Frontend (report viewer + upload panel + history sidebar)
 ```
 
 ---
@@ -48,15 +49,15 @@ React Frontend (report viewer + upload panel)
 |---|---|
 | Backend | Python 3.11+, FastAPI |
 | Agent orchestration | LangChain + LangGraph |
-| LLM | Claude API (claude-3-5-sonnet) or OpenAI GPT-4 |
-| Vector DB | ChromaDB (local) |
+| LLM | Claude API (`claude-sonnet-4-20250514`) |
+| Vector DB | ChromaDB (local, persisted to disk) |
 | Web search | Tavily Search API |
 | Document parsing | PyMuPDF, python-docx, LangChain splitters |
-| Embeddings | OpenAI text-embedding-3-small or HuggingFace (free) |
-| Frontend | React + Vite + TailwindCSS |
+| Embeddings | OpenAI `text-embedding-3-small` (optional) or HuggingFace `all-MiniLM-L6-v2` (free, local fallback) |
+| Frontend | React 18 + Vite + TailwindCSS |
 | Report rendering | React-Markdown + remark-gfm |
-| PDF export | WeasyPrint or FPDF2 |
-| Database | SQLite (dev) / PostgreSQL (prod) |
+| PDF export | WeasyPrint |
+| Database | SQLite (async via aiosqlite) |
 | Infrastructure | Docker + Docker Compose |
 
 ---
@@ -67,82 +68,128 @@ React Frontend (report viewer + upload panel)
 research-assistant/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app + CORS + routes
+│   │   ├── main.py                  # FastAPI app + CORS + all routes
 │   │   ├── agent/
-│   │   │   ├── orchestrator.py      # LangGraph agent graph definition
-│   │   │   ├── tools.py             # Tool definitions: search, RAG, summarize
-│   │   │   └── prompts.py           # System prompts + output templates
+│   │   │   ├── orchestrator.py      # LangGraph graph: planner → researcher → synthesizer
+│   │   │   ├── tools.py             # web_search (Tavily) + rag_search (ChromaDB)
+│   │   │   └── prompts.py           # System prompts + report structure template
 │   │   ├── rag/
-│   │   │   ├── ingest.py            # Chunk + embed documents into ChromaDB
+│   │   │   ├── ingest.py            # Load PDF/DOCX → chunk → embed → store in ChromaDB
 │   │   │   ├── retriever.py         # Similarity search over ChromaDB
-│   │   │   └── embeddings.py        # Embedding model config
+│   │   │   └── embeddings.py        # Embedding model config (OpenAI or HuggingFace)
 │   │   ├── output/
-│   │   │   ├── formatter.py         # Structured markdown generation
-│   │   │   └── pdf_export.py        # HTML → PDF via WeasyPrint
+│   │   │   ├── formatter.py         # Report header, summary extraction, metadata
+│   │   │   └── pdf_export.py        # Markdown → styled HTML → PDF via WeasyPrint
 │   │   ├── memory/
-│   │   │   └── store.py             # Query history + session memory
+│   │   │   └── store.py             # In-process session memory (last N queries)
 │   │   └── db/
-│   │       └── models.py            # SQLite schema + CRUD helpers
+│   │       └── models.py            # SQLAlchemy async models + CRUD helpers
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
 │   ├── src/
+│   │   ├── main.jsx
+│   │   ├── App.jsx                  # Root layout: sidebar + main + upload panel
+│   │   ├── index.css                # All custom styles + CSS variables
 │   │   ├── components/
-│   │   │   ├── QueryInput.jsx       # Query bar + submit
-│   │   │   ├── ReportViewer.jsx     # Markdown → rendered report
-│   │   │   ├── UploadPanel.jsx      # PDF/doc upload + status
-│   │   │   └── HistorySidebar.jsx   # Previous query history
-│   │   ├── api/
-│   │   │   └── client.js            # Axios wrapper for backend calls
-│   │   └── App.jsx
+│   │   │   ├── QueryInput.jsx       # Query textarea + submit button
+│   │   │   ├── ReportViewer.jsx     # Markdown report renderer + PDF export link
+│   │   │   ├── UploadPanel.jsx      # File upload + indexed documents list
+│   │   │   └── HistorySidebar.jsx   # Past queries with status + delete
+│   │   └── api/
+│   │       └── client.js            # Axios wrapper for all backend API calls
 │   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml
-├── .env.example
+├── .env                             # Your actual keys — DO NOT commit to git
+├── .env.example                     # Template with placeholder values
 └── README.md
 ```
 
 ---
 
-## Setup
+## API Keys Setup
 
-### 1. Clone and configure
+This project requires **2 mandatory keys** and 1 optional key.
+
+### Step 1 — Create your `.env` file
+
+In the root of the project (same folder as `docker-compose.yml`):
 
 ```bash
-git clone https://github.com/your-username/research-assistant
-cd research-assistant
 cp .env.example .env
 ```
 
-Fill in `.env`:
+Then open `.env` in any text editor and fill in your keys:
 
 ```env
-ANTHROPIC_API_KEY=your_key_here       # or OPENAI_API_KEY
-TAVILY_API_KEY=your_key_here
-CHROMA_PERSIST_DIR=./data/chroma
-SQLITE_DB_PATH=./data/history.db
+ANTHROPIC_API_KEY="YOUR_ANTHROPIC_KEY"        
+TAVILY_API_KEY="YOUR_TAVILY_KEY"             
+CHROMA_PERSIST_DIR=./data/chroma    
+SQLITE_DB_PATH=./data/history.db    
+OPENAI_API_KEY="YOUR_OPENAI_KEY"                     
 ```
 
-### 2. Run with Docker
+### Step 2 — Get your keys
+
+**Anthropic API Key** (required — for Claude LLM)
+1. Go to https://console.anthropic.com
+2. Sign up or log in
+3. Click **API Keys** in the left sidebar
+4. Click **Create Key**, give it a name, copy it
+5. Paste as `ANTHROPIC_API_KEY=sk-ant-...` in your `.env`
+
+**Tavily API Key** (required — for web search)
+1. Go to https://app.tavily.com
+2. Sign up (free tier: 1,000 searches/month)
+3. Your API key is shown on the dashboard homepage
+4. Paste as `TAVILY_API_KEY=tvly-...` in your `.env`
+
+**OpenAI API Key** (optional — for embeddings only)
+- If set: uses `text-embedding-3-small` (paid, higher quality)
+- If blank: automatically falls back to `all-MiniLM-L6-v2` (free, runs locally)
+- Get one at: https://platform.openai.com/api-keys
+
+
+---
+
+## Setup & Running
+
+### Option A — Docker (recommended, no Python/Node setup needed)
 
 ```bash
+# 1. Clone the repo
+git clone https://github.com/shanmukhraj7/research-assistant
+cd research-assistant
+
+# 2. Create and fill in your .env
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY and TAVILY_API_KEY
+
+# 3. Start everything
 docker-compose up --build
 ```
 
-- Backend: http://localhost:8000
 - Frontend: http://localhost:5173
-- API docs: http://localhost:8000/docs
+- Backend API: http://localhost:8000
+- Interactive API docs: http://localhost:8000/docs
 
-### 3. Run locally (without Docker)
+### Option B — Run locally (without Docker)
 
+**Backend:**
 ```bash
-# Backend
 cd backend
-python -m venv venv && source venv/bin/activate
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
 
-# Frontend (separate terminal)
+**Frontend** (in a separate terminal):
+```bash
 cd frontend
 npm install
 npm run dev
@@ -150,69 +197,13 @@ npm run dev
 
 ---
 
-## Core Implementation Details
+## How to Use
 
-### Agent Orchestrator (`agent/orchestrator.py`)
-
-Uses **LangGraph** to define a stateful agent loop:
-
-```python
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolExecutor
-
-# State: query + retrieved context + steps taken + final report
-graph = StateGraph(ResearchState)
-graph.add_node("planner", plan_steps)       # Break query into steps
-graph.add_node("researcher", run_tools)     # Execute RAG + web search
-graph.add_node("synthesizer", synthesize)   # Write structured report
-graph.add_edge("planner", "researcher")
-graph.add_edge("researcher", "synthesizer")
-graph.add_edge("synthesizer", END)
-```
-
-### RAG Pipeline (`rag/ingest.py`)
-
-```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
-
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-chunks = splitter.split_documents(loaded_docs)
-vectorstore = Chroma.from_documents(chunks, embedding=OpenAIEmbeddings())
-```
-
-### Web Search Tool (`agent/tools.py`)
-
-```python
-from tavily import TavilyClient
-
-def web_search(query: str) -> list[dict]:
-    client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
-    results = client.search(query, max_results=5, search_depth="advanced")
-    return results["results"]
-```
-
-### Structured Output Format
-
-Reports are generated using a strict prompt template:
-
-```
-## Executive Summary
-[2-3 sentence overview]
-
-## Key Findings
-| Finding | Source | Confidence |
-|---|---|---|
-...
-
-## Detailed Analysis
-### [Sub-topic 1]
-...
-
-## Sources
-...
-```
+1. **Submit a query** — Type your research question in the text box and press "Research →" (or Cmd+Enter)
+2. **Wait for the report** — The agent searches the web and your documents, then synthesizes a structured report (takes 15–60 seconds)
+3. **Browse history** — Past queries appear in the left sidebar with status indicators; click any to reload
+4. **Upload documents** — Use the right panel to upload PDFs or DOCX files; they get chunked and indexed into ChromaDB for RAG
+5. **Export PDF** — Click "↓ Export PDF" above any completed report to download it
 
 ---
 
@@ -220,94 +211,58 @@ Reports are generated using a strict prompt template:
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/query` | Submit a research query |
-| POST | `/api/upload` | Upload PDF or DOCX for RAG |
-| GET | `/api/history` | Get query history |
-| GET | `/api/report/{id}` | Get a specific report |
-| GET | `/api/report/{id}/pdf` | Download report as PDF |
-| DELETE | `/api/history/{id}` | Delete a past query |
+| `POST` | `/api/query` | Submit a research query (returns `id` immediately, runs in background) |
+| `GET` | `/api/report/{id}` | Poll for report status and content |
+| `GET` | `/api/report/{id}/pdf` | Download completed report as a styled PDF |
+| `GET` | `/api/history` | List all past queries with summaries |
+| `DELETE` | `/api/history/{id}` | Delete a past query |
+| `POST` | `/api/upload` | Upload a PDF or DOCX for RAG indexing |
+| `GET` | `/api/documents` | List all uploaded and indexed documents |
+| `GET` | `/health` | Health check |
 
 ---
 
-## Phased Build Plan
+## Agent Pipeline Details
 
-### Phase 1 — Core Pipeline (Week 1–2)
-- FastAPI backend with `/query` endpoint
-- Tavily web search integration
-- Basic LLM call (no agent loop yet)
-- Structured markdown output
-- Simple React frontend with query input and report viewer
+### LangGraph Orchestrator (`agent/orchestrator.py`)
 
-### Phase 2 — RAG System (Week 3–4)
-- PDF/DOCX upload endpoint
-- LangChain document loading + chunking
-- ChromaDB setup and similarity search
-- Combine RAG results with web search in context
+Three-node stateful graph:
 
-### Phase 3 — Agent Loop (Week 5–6)
-- LangGraph orchestrator with planner → researcher → synthesizer
-- Tool-calling: agent decides when to search web vs RAG
-- Iterative refinement (agent can do follow-up searches)
-- Error handling and fallbacks
+```
+planner → researcher → synthesizer → END
+```
 
-### Phase 4 — Memory + Export (Week 7–8)
-- SQLite history store
-- Conversation memory (remember previous queries in session)
-- PDF export with WeasyPrint
-- History sidebar in UI
+- **planner**: Calls Claude to break the query into 3–5 targeted sub-queries (returns JSON array)
+- **researcher**: Runs `multi_query_web_search` + `multi_query_rag_search` in parallel across all sub-queries, deduplicates results
+- **synthesizer**: Calls Claude with all gathered context + enforced report template to write the final structured report
 
-### Phase 5 — Polish + Deploy (Week 9–10)
-- Docker Compose full stack
-- Deploy to Railway or Render
-- Rate limiting, error messages, loading states
-- Optional: authentication with Clerk or Supabase Auth
+### RAG Pipeline (`rag/ingest.py` + `rag/retriever.py`)
 
----
+- Supports PDF (via PyMuPDF) and DOCX (via python-docx)
+- Chunks with `RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)`
+- Embeds with OpenAI or HuggingFace and stores in ChromaDB (persisted to `./data/chroma`)
+- Retrieval: top-k cosine similarity search, deduplicated across multiple sub-queries
 
-## Learning Path (Learn + Build Simultaneously)
+### Session Memory (`memory/store.py`)
 
-If you are learning and building at the same time, this is the recommended sequence:
+- Keeps last 10 query/report pairs in memory (process lifetime)
+- Injects last 3 as context into new queries so Claude can build on prior research
 
-**Week 1–2:** Python basics, FastAPI, REST APIs, async/await
-- Project milestone: working `/query` endpoint that calls an LLM
+### Report Format (enforced via prompt)
 
-**Week 3–4:** LangChain, vector databases, embeddings, RAG
-- Project milestone: upload a PDF and ask questions about it
-
-**Week 5–6:** LangGraph, agent architectures, tool use, prompt engineering
-- Project milestone: agent that plans multi-step research tasks
-
-**Week 7–8:** React, Vite, TailwindCSS, API calls from frontend
-- Project milestone: full UI with query input + rendered report
-
-**Week 9–10:** Docker, environment management, deployment
-- Project milestone: live deployed URL
-
-**Total realistic timeline:** 8–12 weeks for a solid v1 if learning on the go. A developer already comfortable with Python and React could ship v1 in 3–4 weeks.
+```markdown
+## Executive Summary
+## Key Findings      ← includes a markdown table
+## Detailed Analysis
+### Sub-topic 1
+### Sub-topic 2
+## Conclusions & Recommendations
+## Sources
+```
 
 ---
 
-## Differentiators vs Typical Student Projects
-
-- Uses **LangGraph** for proper stateful agent loops (not just a linear chain)
-- **Multi-source retrieval** — both local docs and live web, merged intelligently
-- **Structured output with validation** — report format is enforced via prompts + Pydantic schemas
-- **PDF export** — tangible deliverable beyond a chat interface
-- **Query history** — basic memory that makes it feel like a real tool
-
----
-
-## Suggested Improvements (after v1)
-
-- Add citation tracking — every claim linked to its source URL or doc chunk
-- Multi-query comparison — "compare X vs Y" runs two research threads and merges
-- Streaming output — stream the report token-by-token as it generates
-- Scheduled reports — run a query on a cron job and email the report
-- Slack/Notion integration — push reports directly to your workspace
-
----
-
-## Dependencies (`requirements.txt`)
+## Dependencies
 
 ```
 fastapi==0.111.0
@@ -328,10 +283,6 @@ sqlalchemy==2.0.30
 aiosqlite==0.20.0
 python-dotenv==1.0.1
 httpx==0.27.0
+markdown
 ```
 
----
-
-## License
-
-MIT — use it, extend it, ship it.
