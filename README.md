@@ -1,6 +1,6 @@
 # AI Research Assistant
 
-A production-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by Claude (Anthropic), RAG, and a LangGraph agentic orchestration loop.
+A production-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by various LLM's, RAG, and a LangGraph agentic orchestration loop.
 
 ---
 
@@ -14,7 +14,7 @@ It will:
 1. Break the query into sub-tasks (planner node)
 2. Search the web for current information (via Tavily)
 3. Search your uploaded documents (via RAG + ChromaDB)
-4. Reason over retrieved context using Claude
+4. Reason over retrieved context using various LLM's
 5. Produce a structured report with sections, tables, and a summary
 6. Let you export the report as a PDF
 
@@ -29,7 +29,7 @@ User Query
 Orchestrator Agent (LangGraph)
     │  ├── RAG Tool        → ChromaDB vector search (your docs)
     │  ├── Web Search Tool → Tavily Search API (live web)
-    │  └── LLM Reasoning  → Claude (claude-sonnet-4-20250514)
+    │  └── LLM Reasoning  → Various LLM's
     │
     ▼
 Structured Output Engine
@@ -49,7 +49,7 @@ React Frontend (report viewer + upload panel + history sidebar)
 |---|---|
 | Backend | Python 3.11+, FastAPI |
 | Agent orchestration | LangChain + LangGraph |
-| LLM | Claude API (`claude-sonnet-4-20250514`) |
+| LLM | Groq API | Gemini API | OpenAI API | Claude API |
 | Vector DB | ChromaDB (local, persisted to disk) |
 | Web search | Tavily Search API |
 | Document parsing | PyMuPDF, python-docx, LangChain splitters |
@@ -130,7 +130,8 @@ ANTHROPIC_API_KEY="YOUR_ANTHROPIC_KEY"
 TAVILY_API_KEY="YOUR_TAVILY_KEY"             
 CHROMA_PERSIST_DIR=./data/chroma    
 SQLITE_DB_PATH=./data/history.db    
-OPENAI_API_KEY="YOUR_OPENAI_KEY"                     
+OPENAI_API_KEY="YOUR_OPENAI_KEY"
+GEMINI_API_KEY="YOUR_GEMINI_KEY"                     
 ```
 
 ### Step 2 — Get your keys
@@ -277,6 +278,7 @@ tavily-python==0.3.3
 pymupdf==1.24.5
 python-docx==1.1.2
 weasyprint==62.1
+pydyf=0.10.0
 pydantic==2.7.0
 python-multipart==0.0.9
 sqlalchemy==2.0.30
