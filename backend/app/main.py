@@ -36,10 +36,11 @@ from .rag.ingest import ingest_document
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-DB_PATH = os.getenv("SQLITE_DB_PATH", "./data/history.db")
-UPLOAD_DIR = Path("./data/uploads")
+DB_PATH = os.getenv("SQLITE_DB_PATH", "/tmp/history.db")
+CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "/tmp/chroma")
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-Path("./data/chroma").mkdir(parents=True, exist_ok=True)
+Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
