@@ -304,13 +304,11 @@ async def health():
 # ── Static Files & Frontend ───────────────────────────────────────────────────
 
 # Define the path to the frontend build directory
-# In the unified Docker structure, this will be next to the 'app' package
-FRONTEND_PATH = os.getenv("FRONTEND_PATH")
-if FRONTEND_PATH:
-    FRONTEND_PATH = Path(FRONTEND_PATH)
-else:
-    # Fallback to local development path: backend/app/main.py -> backend/../frontend/dist
-    FRONTEND_PATH = Path(__file__).parent.parent.parent / "frontend" / "dist"
+# In production (Docker), this will be /app/frontend/dist
+# Locally, it can be adjusted or ignored
+
+
+FRONTEND_PATH = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 if FRONTEND_PATH.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_PATH / "assets"), name="assets")
