@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for WeasyPrint and other packages
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpango-1.0-0 \
@@ -21,4 +21,5 @@ COPY . .
 
 RUN mkdir -p /app/data/chroma /app/data/uploads
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
