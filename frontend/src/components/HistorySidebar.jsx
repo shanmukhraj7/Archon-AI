@@ -1,38 +1,35 @@
 import { useEffect, useState } from "react";
 import { getHistory, deleteHistory } from "../api/client";
 
+const timeAgo = (iso) => {
+  if (!iso) return "";
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60)    return "just now";
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+
+const dotClass = (status) =>
+  ({ done: "done", running: "running", pending: "pending", error: "error" }[status] ?? "pending");
+
 export default function HistorySidebar({ onSelect, activeId }) {
   const [history, setHistory] = useState([]);
 
   const load = async () => {
-    try {
-      const res = await getHistory();
-      setHistory(res.data);
-    } catch {}
+    try { const r = await getHistory(); setHistory(r.data); } catch {}
   };
 
   useEffect(() => { load(); }, []);
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
-    await deleteHistory(id);
-    load();
-  };
-
-  const statusClass = (s) =>
-    ({ done: "done", running: "running", pending: "pending", error: "error" }[s] || "pending");
-
-  const timeAgo = (iso) => {
-    if (!iso) return "";
-    const diff = (Date.now() - new Date(iso)) / 1000;
-    if (diff < 60) return "just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    try { await deleteHistory(id); load(); } catch {}
   };
 
   return (
     <aside className="history-sidebar">
+      {/* Brand */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">⚡</div>
@@ -44,30 +41,35 @@ export default function HistorySidebar({ onSelect, activeId }) {
       <div className="sidebar-section-label">Recent Research</div>
 
       <ul className="history-list">
-        {history.length === 0 && (
-          <p className="history-empty">
+        {history.length === 0 ? (
+          <div className="history-empty">
+            <span className="history-empty-icon">🔬</span>
             No research yet.<br />Submit a query to get started.
-          </p>
+          </div>
+        ) : (
+          history.map((item) => (
+            <li
+              key={item.id}
+              className={`history-item${activeId === item.id ? " active" : ""}`}
+              onClick={() => onSelect(item.id)}
+            >
+              <span className={`h-dot ${dotClass(item.status)}`} />
+              <div className="h-content">
+                <p className="h-query">{item.query}</p>
+                <p className="h-meta">
+                  {item.summary
+                    ? item.summary.slice(0, 60) + "…"
+                    : timeAgo(item.created_at)}
+                </p>
+              </div>
+              <button
+                className="h-del"
+                title="Delete"
+                onClick={(e) => handleDelete(e, item.id)}
+              >✕</button>
+            </li>
+          ))
         )}
-        {history.map((item) => (
-          <li
-            key={item.id}
-            className={`history-item ${activeId === item.id ? "active" : ""}`}
-            onClick={() => onSelect(item.id)}
-          >
-            <span className={`h-status ${statusClass(item.status)}`} />
-            <div className="h-content">
-              <p className="h-query">{item.query}</p>
-              {item.summary && (
-                <p className="h-summary">{item.summary.slice(0, 72)}…</p>
-              )}
-              <p className="h-summary">{timeAgo(item.created_at)}</p>
-            </div>
-            <button className="h-delete" onClick={(e) => handleDelete(e, item.id)} title="Delete">
-              ✕
-            </button>
-          </li>
-        ))}
       </ul>
     </aside>
   );

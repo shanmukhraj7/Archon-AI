@@ -2,16 +2,13 @@ import { useState, useRef, useEffect } from "react";
 import { uploadDocument, getDocuments } from "../api/client";
 
 export default function UploadPanel({ reportMetadata }) {
-  const [docs, setDocs] = useState([]);
+  const [docs, setDocs]         = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState(null); // { type: 'success'|'error', text }
+  const [msg, setMsg]            = useState(null);
   const inputRef = useRef();
 
   const loadDocs = async () => {
-    try {
-      const res = await getDocuments();
-      setDocs(res.data);
-    } catch {}
+    try { const r = await getDocuments(); setDocs(r.data); } catch {}
   };
 
   useEffect(() => { loadDocs(); }, []);
@@ -19,14 +16,13 @@ export default function UploadPanel({ reportMetadata }) {
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
-    setMessage(null);
+    setUploading(true); setMsg(null);
     try {
-      const res = await uploadDocument(file);
-      setMessage({ type: "success", text: `✓ Indexed ${res.data.chunk_count} chunks from "${res.data.filename}"` });
+      const r = await uploadDocument(file);
+      setMsg({ type: "success", text: `✓ Indexed ${r.data.chunk_count} chunks from "${r.data.filename}"` });
       loadDocs();
     } catch {
-      setMessage({ type: "error", text: "✗ Upload failed. Only PDF and DOCX files are supported." });
+      setMsg({ type: "error", text: "✗ Upload failed. Only PDF and DOCX supported." });
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -35,7 +31,8 @@ export default function UploadPanel({ reportMetadata }) {
 
   return (
     <div className="right-scroll">
-      {/* Stats */}
+
+      {/* Report stats */}
       {reportMetadata && (
         <div>
           <div className="panel-title">Report Stats</div>
@@ -55,7 +52,7 @@ export default function UploadPanel({ reportMetadata }) {
       {/* Upload */}
       <div>
         <div className="panel-title">Your Documents</div>
-        <div className="upload-dropzone">
+        <div className="upload-zone">
           <input
             ref={inputRef}
             type="file"
@@ -63,16 +60,14 @@ export default function UploadPanel({ reportMetadata }) {
             onChange={handleUpload}
             disabled={uploading}
           />
-          <div className="upload-icon">{uploading ? "⏳" : "📂"}</div>
-          <div className="upload-dropzone-text">
-            {uploading ? "Indexing document…" : "Click to upload a file"}
+          <div className="upload-zone-icon">{uploading ? "⏳" : "📂"}</div>
+          <div className="upload-zone-title">
+            {uploading ? "Indexing…" : "Click to upload"}
           </div>
-          <div className="upload-dropzone-hint">PDF or DOCX · Used for RAG search</div>
+          <div className="upload-zone-hint">PDF or DOCX · Searched alongside the web</div>
         </div>
 
-        {message && (
-          <div className={`upload-message ${message.type}`}>{message.text}</div>
-        )}
+        {msg && <div className={`upload-msg ${msg.type}`}>{msg.text}</div>}
 
         {docs.length > 0 && (
           <ul className="doc-list">
@@ -89,11 +84,13 @@ export default function UploadPanel({ reportMetadata }) {
 
       {/* Tip */}
       <div className="tip-card">
-        <div className="tip-title">💡 Pro tip</div>
-        <div className="tip-text">
-          Upload your own PDFs or DOCX files to include them in research. Archon will search your documents alongside the web.
+        <div className="tip-head">💡 Pro Tip</div>
+        <div className="tip-body">
+          Upload PDFs or DOCX files to include your own documents in research.
+          Archon will search them alongside live web results.
         </div>
       </div>
+
     </div>
   );
 }

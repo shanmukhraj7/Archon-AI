@@ -8,8 +8,8 @@ import "./index.css";
 
 export default function App() {
   const [activeReport, setActiveReport] = useState(null);
-  const [isLoading, setIsLoading]       = useState(false);
-  const [sidebarKey, setSidebarKey]     = useState(0);
+  const [isLoading,    setIsLoading]    = useState(false);
+  const [sidebarKey,   setSidebarKey]   = useState(0);
 
   const pollReport = useCallback(async (id) => {
     try {
@@ -39,42 +39,48 @@ export default function App() {
   };
 
   const handleSelectHistory = async (id) => {
-    try {
-      const res = await getReport(id);
-      setActiveReport(res.data);
-    } catch {}
+    try { const res = await getReport(id); setActiveReport(res.data); } catch {}
   };
 
   return (
     <div className="app-layout">
-      {/* Left — History */}
-      <HistorySidebar
-        key={sidebarKey}
-        onSelect={handleSelectHistory}
-        activeId={activeReport?.id}
-      />
+      <HistorySidebar key={sidebarKey} onSelect={handleSelectHistory} activeId={activeReport?.id} />
 
-      {/* Center — Main */}
       <main className="app-main">
         <div className="main-scroll">
+
           <header className="app-header">
-            <div className="app-header-eyebrow">AI-Powered Research</div>
+            <div className="header-eyebrow">
+              <span className="header-eyebrow-line" />
+              <span className="header-eyebrow-text">AI-Powered Research</span>
+              <span className="header-eyebrow-badge">v1.0</span>
+            </div>
+
             <h1>
-              Research at the<br />
-              speed of <em>thought.</em>
+              Research at the<br />speed of <em>thought.</em>
             </h1>
-            <p>
-              Ask any research question. Archon searches the web, scours your documents,
-              and synthesizes a structured report — in seconds.
+
+            <p className="header-desc">
+              Ask any research question. Archon searches the web, scours your
+              documents, and synthesizes a structured, exportable report — in seconds.
             </p>
+
+            <div className="header-chips">
+              {["Web Search", "RAG Retrieval", "PDF Export", "Multi-LLM"].map((c) => (
+                <span key={c} className="header-chip">
+                  <span className="chip-dot" />
+                  {c}
+                </span>
+              ))}
+            </div>
           </header>
 
           <QueryInput onSubmit={handleSubmit} isLoading={isLoading} />
           <ReportViewer report={activeReport} />
+
         </div>
       </main>
 
-      {/* Right — Upload + Stats */}
       <aside className="app-right">
         <UploadPanel reportMetadata={activeReport?.metadata} />
       </aside>

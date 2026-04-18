@@ -7,69 +7,97 @@ export default function ReportViewer({ report }) {
 
   const { id, query, status, report_markdown, metadata, created_at } = report;
 
+  /* ── Loading ── */
   if (status === "running" || status === "pending") {
     return (
       <div className="report-loading">
-        <div className="loading-orb">🔍</div>
-        <div className="loading-title">
-          Researching <span className="loading-query">"{query}"</span>
+        <div className="loading-orb-wrap">
+          <div className="loading-orb">🔍</div>
+          <div className="loading-ring" />
         </div>
+
+        <div className="loading-title">
+          Researching&nbsp;
+          <span className="loading-query">"{query}"</span>
+        </div>
+
         <div className="loading-steps">
-          <div className="loading-step">
-            <span className="step-icon">🧠</span>
-            Breaking query into sub-topics…
-          </div>
-          <div className="loading-step">
-            <span className="step-icon">🌐</span>
-            Searching the web for current data…
-          </div>
-          <div className="loading-step">
-            <span className="step-icon">📝</span>
-            Synthesizing structured report…
-          </div>
+          {[
+            { icon: "🧠", label: "Breaking query into sub-topics" },
+            { icon: "🌐", label: "Searching the web for fresh data" },
+            { icon: "📝", label: "Synthesizing structured report" },
+          ].map((s, i) => (
+            <div key={i} className="loading-step">
+              <span className="step-icon">{s.icon}</span>
+              <span style={{ flex: 1 }}>{s.label}…</span>
+              <div className="step-bar">
+                <div className="step-bar-fill" style={{ animationDelay: `${i * 0.6}s` }} />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
+  /* ── Error ── */
   if (status === "error") {
-    const errText = report_markdown || "An unknown error occurred.";
-    const shortErr = errText.replace(/^##\s*Error\s*/i, "").trim();
+    const msg = (report_markdown || "An unknown error occurred.")
+      .replace(/^##\s*Error\s*/i, "").trim();
     return (
       <div className="report-error">
-        <span className="report-error-icon">⚠️</span>
+        <div className="err-icon-wrap">⚠️</div>
         <div>
-          <div className="report-error-title">Research Failed</div>
-          <div className="report-error-msg">{shortErr}</div>
+          <div className="err-title">Research Failed</div>
+          <div className="err-msg">{msg}</div>
         </div>
       </div>
     );
   }
 
+  /* ── Done ── */
   const date = created_at
-    ? new Date(created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(created_at).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+      })
     : "";
 
   return (
     <div className="report-wrapper">
+      {/* Topbar */}
       <div className="report-topbar">
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span className="report-badge">Complete</span>
+        <div className="topbar-left">
+          <span className="report-badge">
+            <span className="badge-dot" />
+            Complete
+          </span>
+
           {metadata && (
-            <span className="report-meta-text">
-              {metadata.word_count} words · {metadata.section_count} sections
-              {date ? ` · ${date}` : ""}
-            </span>
+            <div className="report-stats">
+              <span className="report-stat">{metadata.word_count} words</span>
+              <span className="report-stat">{metadata.section_count} sections</span>
+              {date && <span className="report-stat">{date}</span>}
+            </div>
           )}
         </div>
-        <div className="report-topbar-right">
-          <a href={getPdfUrl(id)} target="_blank" rel="noreferrer" className="pdf-btn">
+
+        <div className="topbar-right">
+          <a
+            href={getPdfUrl(id)}
+            target="_blank"
+            rel="noreferrer"
+            className="pdf-btn"
+          >
             ↓ Export PDF
           </a>
         </div>
       </div>
+
+      {/* Body */}
       <div className="report-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{report_markdown}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {report_markdown}
+        </ReactMarkdown>
       </div>
     </div>
   );

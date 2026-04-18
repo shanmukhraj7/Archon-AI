@@ -1,10 +1,10 @@
 import { useState } from "react";
 
 const EXAMPLES = [
-  "Analyze AI adoption trends in fintech for 2024–2025",
-  "What are the hiring trends for freshers in tech this year?",
-  "Compare remote work policies across Fortune 500 companies",
-  "Summarize recent breakthroughs in quantum computing",
+  { icon: "📈", text: "Analyze AI adoption trends in fintech for 2024–2025" },
+  { icon: "👔", text: "Hiring trends for freshers in tech this year" },
+  { icon: "🌐", text: "Compare remote work policies across Fortune 500" },
+  { icon: "⚛️", text: "Recent breakthroughs in quantum computing" },
 ];
 
 export default function QueryInput({ onSubmit, isLoading }) {
@@ -20,47 +20,59 @@ export default function QueryInput({ onSubmit, isLoading }) {
   return (
     <>
       <div className="query-card">
-        <div className="query-label">
-          <span className="query-label-dot" />
-          Research Query
+        <div className="query-top">
+          <span className="query-top-dot" />
+          <span className="query-top-label">Research Query</span>
         </div>
+
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
-          placeholder='e.g. "Analyze the impact of AI on software engineering jobs in 2024–2025"'
+          placeholder='e.g. "Analyze the impact of AI on software jobs in 2024–2025"'
           rows={3}
           disabled={isLoading}
           className="query-textarea"
           autoFocus
         />
-        <div className="query-footer">
-          <span className="query-hint">
-            <kbd>⌘</kbd> + <kbd>Enter</kbd> to submit
+
+        <div className="query-bar">
+          <span className="query-shortcuts">
+            <span className="kbd">⌘</span>
+            <span style={{ margin: "0 2px" }}>+</span>
+            <span className="kbd">↵</span>
+            <span style={{ marginLeft: 6 }}>to submit</span>
           </span>
-          <button onClick={handleSubmit} disabled={isLoading || !value.trim()} className="query-btn">
+
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading || !value.trim()}
+            className="query-btn"
+          >
             {isLoading ? (
               <>
                 <span className="btn-spinner" />
                 Researching…
               </>
             ) : (
-              <>
-                <span>Research</span>
-                <span>→</span>
-              </>
+              <>Research →</>
             )}
           </button>
         </div>
       </div>
 
       {!isLoading && (
-        <div className="examples-section">
+        <div className="examples-wrap">
           <div className="examples-label">Try an example</div>
           <div className="examples-grid">
             {EXAMPLES.map((ex, i) => (
-              <button key={i} className="example-chip" onClick={() => setValue(ex)}>
-                {ex}
+              <button
+                key={i}
+                className="ex-chip"
+                onClick={() => setValue(ex.text)}
+              >
+                <span className="ex-chip-icon">{ex.icon}</span>
+                {ex.text}
               </button>
             ))}
           </div>

@@ -1,11 +1,6 @@
 """
 LangGraph-based orchestrator: planner → researcher → synthesizer.
 
-LLM priority order (first key found in .env wins, auto-falls-through on quota/rate errors):
-  1. Groq        — GROQ_API_KEY       (FREE, 14,400 req/day, llama-3.3-70b)
-  2. OpenAI      — OPENAI_API_KEY     (paid, gpt-4o-mini)
-  3. Gemini      — GEMINI_API_KEY     (FREE, gemini-2.0-flash-lite)
-  4. Claude      — ANTHROPIC_API_KEY  (paid, last resort)
 """
 
 import os
@@ -49,10 +44,6 @@ def _is_quota_error(e: Exception) -> bool:
 
 
 def _call_llm(system: str, user: str, max_tokens: int = 4096) -> str:
-    """
-    Try each provider in order. Falls through to the next on quota/rate errors.
-    Priority: Groq → OpenAI → Gemini → Claude
-    """
     providers = []
 
     if os.environ.get("GROQ_API_KEY"):

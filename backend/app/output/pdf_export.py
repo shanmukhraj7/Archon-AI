@@ -1,98 +1,137 @@
 """
 HTML → PDF export via WeasyPrint.
-Converts a markdown report to a styled PDF in memory.
-Uses only system-safe fonts to avoid WeasyPrint network/font errors.
+Uses only system fonts — no network calls, works in Docker.
 """
 
 import markdown as md_lib
+import logging
 
+logger = logging.getLogger(__name__)
 
 REPORT_CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+@page {
+    size: A4;
+    margin: 2.5cm 2.2cm;
+}
+
 body {
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: 11pt;
-    line-height: 1.75;
-    color: #1a1a2e;
-    padding: 48px 64px;
+    font-size: 10.5pt;
+    line-height: 1.8;
+    color: #1c1c2e;
 }
 
 h1 {
-    font-family: Georgia, serif;
-    font-size: 22pt;
-    color: #0f3460;
-    margin-bottom: 6px;
-    border-bottom: 3px solid #e94560;
-    padding-bottom: 10px;
+    font-size: 20pt;
+    color: #0f2d5a;
+    font-weight: bold;
+    border-bottom: 2.5pt solid #c97b00;
+    padding-bottom: 8pt;
+    margin-bottom: 6pt;
     margin-top: 0;
 }
 
 h2 {
-    font-family: Georgia, serif;
-    font-size: 14pt;
-    color: #0f3460;
-    margin-top: 28px;
-    margin-bottom: 10px;
-    border-left: 4px solid #e94560;
-    padding-left: 12px;
+    font-size: 13pt;
+    color: #0f2d5a;
+    font-weight: bold;
+    margin-top: 22pt;
+    margin-bottom: 8pt;
+    padding-left: 10pt;
+    border-left: 3.5pt solid #c97b00;
 }
 
 h3 {
-    font-size: 12pt;
+    font-size: 11pt;
     font-weight: bold;
-    color: #16213e;
-    margin-top: 18px;
-    margin-bottom: 6px;
+    color: #1a3a6e;
+    margin-top: 14pt;
+    margin-bottom: 5pt;
 }
 
-p { margin-bottom: 10px; }
+p {
+    margin-bottom: 8pt;
+    orphans: 3;
+    widows: 3;
+}
+
+strong { color: #0f2d5a; }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 16px 0;
-    font-size: 10pt;
+    margin: 12pt 0;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
 }
 
 th {
-    background: #0f3460;
+    background-color: #0f2d5a;
     color: white;
-    padding: 8px 12px;
+    padding: 6pt 10pt;
     text-align: left;
     font-weight: bold;
+    font-size: 9pt;
 }
 
 td {
-    padding: 7px 12px;
-    border-bottom: 1px solid #e0e0e0;
+    padding: 6pt 10pt;
+    border-bottom: 0.5pt solid #dde0ee;
+    vertical-align: top;
 }
 
-tr:nth-child(even) td { background: #f8f9fa; }
+tr:nth-child(even) td { background-color: #f5f6fb; }
 
 code {
-    background: #f0f0f0;
-    padding: 2px 5px;
+    background: #f0f1f8;
+    padding: 1pt 4pt;
     font-family: 'Courier New', monospace;
     font-size: 9pt;
+    border-radius: 2pt;
+}
+
+pre {
+    background: #f0f1f8;
+    padding: 10pt;
+    margin: 10pt 0;
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+    overflow: hidden;
+    page-break-inside: avoid;
 }
 
 hr {
     border: none;
-    border-top: 1px solid #ddd;
-    margin: 20px 0;
+    border-top: 0.5pt solid #d0d4e8;
+    margin: 16pt 0;
 }
 
-ul, ol { padding-left: 22px; margin-bottom: 10px; }
-li { margin-bottom: 4px; }
-strong { color: #0f3460; }
-a { color: #e94560; text-decoration: none; }
+ul, ol {
+    padding-left: 18pt;
+    margin-bottom: 8pt;
+}
+
+li { margin-bottom: 3pt; }
 
 blockquote {
-    border-left: 3px solid #e94560;
-    padding-left: 14px;
-    color: #555;
-    margin: 12px 0;
+    border-left: 3pt solid #c97b00;
+    padding: 6pt 12pt;
+    margin: 10pt 0;
+    color: #444;
+    font-style: italic;
+    background: #fffbf0;
+}
+
+a { color: #c97b00; text-decoration: none; }
+
+.report-meta {
+    font-size: 9pt;
+    color: #666;
+    margin-bottom: 18pt;
+    padding-bottom: 10pt;
+    border-bottom: 0.5pt solid #e0e4f0;
 }
 """
 
@@ -119,12 +158,15 @@ def export_pdf(markdown_text: str) -> bytes:
     try:
         from weasyprint import HTML
     except ImportError:
-        raise RuntimeError("WeasyPrint is not installed. Run: pip install weasyprint")
+        raise RuntimeError("WeasyPrint is not installed.")
 
     html_content = markdown_to_html(markdown_text)
 
-    # Disable network access to avoid font/resource fetch errors in Docker
-    pdf_bytes = HTML(string=html_content, base_url=None).write_pdf(
-        presentational_hints=True,
-    )
+    try:
+        # Try modern WeasyPrint API first (v53+)
+        pdf_bytes = HTML(string=html_content, base_url=None).write_pdf()
+    except TypeError:
+        # Fallback for older versions
+        pdf_bytes = HTML(string=html_content).write_pdf()
+
     return pdf_bytes
