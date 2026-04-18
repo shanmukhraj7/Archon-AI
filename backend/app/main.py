@@ -9,9 +9,10 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -299,3 +300,32 @@ async def get_documents():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# ── Static Files & Frontend ───────────────────────────────────────────────────
+
+# Define the path to the frontend build directory
+# In the unified Docker structure, this will be next to the 'app' package
+FRONTEND_PATH = os.getenv("FRONTEND_PATH")
+if FRONTEND_PATH:
+    FRONTEND_PATH = Path(FRONTEND_PATH)
+else:
+    # Fallback to local development path: backend/app/main.py -> backend/../frontend/dist
+    FRONTEND_PATH = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+if FRONTEND_PATH.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_PATH / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # If the path looks like an API call, it should have been caught by routes above.
+        # Otherwise, serve index.html for React Router support.
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        
+        index_file = FRONTEND_PATH / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        
+        return {"error": "Frontend build not found"}
+else:
+    print(f"Warning: Frontend path {FRONTEND_PATH} not found. Static files will not be served.")
