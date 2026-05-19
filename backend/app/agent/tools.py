@@ -5,7 +5,7 @@ Tool definitions: web search (Tavily) and RAG search (ChromaDB).
 import os
 from typing import List, Dict, Any
 
-from ..rag.retriever import retrieve_relevant_chunks, format_rag_context
+from ..rag.retriever import retrieve_relevant_chunks, format_rag_context, hybrid_retrieve
 
 
 def web_search(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
@@ -47,7 +47,7 @@ def rag_search(query: str, k: int = 5) -> str:
     """
     Search uploaded documents via ChromaDB and return formatted context.
     """
-    docs = retrieve_relevant_chunks(query, k=k)
+    docs = hybrid_retrieve(query, k=k)
     return format_rag_context(docs)
 
 
@@ -80,14 +80,14 @@ def multi_query_rag_search(queries: List[str], k_per_query: int = 3) -> str:
     """
     Run multiple RAG searches across sub-queries, deduplicate chunks.
     """
-    from ..rag.retriever import retrieve_relevant_chunks
+    from ..rag.retriever import hybrid_retrieve
     from langchain.docstore.document import Document
 
     seen_contents = set()
     all_docs: List[Document] = []
 
     for q in queries:
-        docs = retrieve_relevant_chunks(q, k=k_per_query)
+        docs = hybrid_retrieve(q, k=k_per_query)
         for doc in docs:
             snippet = doc.page_content[:200]
             if snippet not in seen_contents:

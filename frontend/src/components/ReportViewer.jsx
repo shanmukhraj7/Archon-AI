@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getPdfUrl } from "../api/client";
+import AgentTrace from "./AgentTrace";
 
 export default function ReportViewer({ report }) {
   if (!report) return null;
@@ -23,9 +24,12 @@ export default function ReportViewer({ report }) {
 
         <div className="loading-steps">
           {[
-            { icon: "🧠", label: "Breaking query into sub-topics" },
-            { icon: "🌐", label: "Searching the web for fresh data" },
-            { icon: "📝", label: "Synthesizing structured report" },
+            { icon: "🧠", label: "Planning research strategy" },
+            { icon: "🌐", label: "Executing hybrid retrieval" },
+            { icon: "✅", label: "Validating source quality" },
+            { icon: "📝", label: "Summarizing findings" },
+            { icon: "✍️", label: "Writing structured report" },
+            { icon: "🧐", label: "Reviewing for completeness" },
           ].map((s, i) => (
             <div key={i} className="loading-step">
               <span className="step-icon">{s.icon}</span>
@@ -92,6 +96,36 @@ export default function ReportViewer({ report }) {
           </a>
         </div>
       </div>
+
+      {/* Evaluation Metrics */}
+      {metadata && metadata.eval_scores && (
+        <div className="eval-metrics">
+          <div className="eval-metrics-title">Report Quality Metrics</div>
+          <div className="eval-metrics-grid">
+            {[
+              { label: "Faithfulness", value: metadata.eval_scores.faithfulness, help: "Are claims grounded in sources?" },
+              { label: "Answer Relevance", value: metadata.eval_scores.answer_relevance, help: "Does the report answer the query?" },
+              { label: "Source Coverage", value: metadata.eval_scores.source_coverage, help: "Were all sub-topics addressed?" }
+            ].map((metric, idx) => {
+              const pct = Math.round((metric.value || 0) * 100);
+              return (
+                <div key={idx} className="metric-card" title={metric.help}>
+                  <div className="metric-header">
+                    <span>{metric.label}</span>
+                    <span className="metric-pct">{pct}%</span>
+                  </div>
+                  <div className="metric-bar-bg">
+                    <div className="metric-bar-fill" style={{ width: `${pct}%`, backgroundColor: pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Agent Trace Panel */}
+      <AgentTrace reportId={id} metadata={metadata} />
 
       {/* Body */}
       <div className="report-body">

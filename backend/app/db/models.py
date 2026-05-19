@@ -22,6 +22,7 @@ class QueryRecord(Base):
     report_markdown = Column(Text, nullable=True)
     status = Column(String, default="pending")  # pending | running | done | error
     error_message = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)  # JSON blob for agent scores
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -89,7 +90,9 @@ async def update_query(
     status: str,
     report_markdown: Optional[str] = None,
     error_message: Optional[str] = None,
+    metadata: Optional[dict] = None,
 ) -> Optional[QueryRecord]:
+    import json as _json
     result = await session.execute(select(QueryRecord).where(QueryRecord.id == record_id))
     record = result.scalar_one_or_none()
     if not record:
@@ -100,6 +103,8 @@ async def update_query(
         record.report_markdown = report_markdown
     if error_message is not None:
         record.error_message = error_message
+    if metadata is not None:
+        record.metadata_json = _json.dumps(metadata)
     await session.commit()
     await session.refresh(record)
     return record

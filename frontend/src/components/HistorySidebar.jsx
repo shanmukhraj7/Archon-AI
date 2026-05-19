@@ -33,9 +33,9 @@ export default function HistorySidebar({ onSelect, activeId }) {
       <div className="sidebar-header">
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">⚡</div>
-          <span className="sidebar-logo-text">Archon</span>
+          <span className="sidebar-logo-text">Archon AI</span>
         </div>
-        <div className="sidebar-tagline">AI Research Assistant</div>
+        <div className="sidebar-tagline">Autonomous Research System</div>
       </div>
 
       <div className="sidebar-section-label">Recent Research</div>

@@ -7,6 +7,7 @@ const api = axios.create({
 
 export const submitQuery    = (query) => api.post("/api/query", { query });
 export const getReport      = (id)    => api.get(`/api/report/${id}`);
+export const getTrace       = (id)    => api.get(`/api/report/${id}/trace`);
 export const getHistory     = ()      => api.get("/api/history");
 export const deleteHistory  = (id)    => api.delete(`/api/history/${id}`);
 export const getDocuments   = ()      => api.get("/api/documents");

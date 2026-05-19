@@ -1,6 +1,7 @@
 """
 FastAPI application entry point.
-Routes: /api/query, /api/upload, /api/history, /api/report/{id}, /api/report/{id}/pdf
+Routes: /api/query, /api/upload, /api/history, /api/report/{id},
+        /api/report/{id}/pdf, /api/report/{id}/trace
 """
 
 import os
@@ -46,7 +47,7 @@ Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
 # ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="AI Research Assistant API",
+    title="Archon AI API",
     description="Agentic research tool powered by LLM + RAG + Web search",
     version="1.0.0",
 )
@@ -109,7 +110,7 @@ class DocumentResponse(BaseModel):
 # ── Background task ───────────────────────────────────────────────────────────
 
 async def run_research_task(record_id: str, query: str):
-    """Background task: run the agent and update the DB record."""
+    """Background task: run the 6-agent pipeline and update the DB record."""
     factory = get_db()
     async with factory() as session:
         await update_query(session, record_id, status="running")
@@ -122,8 +123,40 @@ async def run_research_task(record_id: str, query: str):
         if memory_ctx:
             enriched_query = f"{query}\n\n{memory_ctx}"
 
-        raw_report = await run_research(enriched_query)
+        # run_research now returns a rich dict (report + agent metadata)
+        result = await run_research(enriched_query, job_id=record_id)
+        
+        if result.get("error"):
+            raise RuntimeError(result["error"])
+            
+        raw_report  = result["report"]
         final_report = ensure_report_structure(raw_report, query)
+
+        # Compute RAGAS-style evaluation metrics
+        eval_scores: dict = {}
+        try:
+            from .evaluation.metrics import compute_all_metrics
+            eval_scores = compute_all_metrics(
+                query=query,
+                report=final_report,
+                web_context=result.get("web_context", ""),
+                rag_context=result.get("rag_context", ""),
+                sub_queries=result.get("sub_queries", []),
+            )
+        except Exception as eval_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Eval metrics failed: {eval_err}")
+
+        # Build agent_meta to surface in the API response
+        agent_meta = {
+            "source_quality_score": result.get("source_quality_score"),
+            "validation_result":    result.get("validation_result"),
+            "review_score":         result.get("review_score"),
+            "review_passed":        result.get("review_passed"),
+            "review_feedback":      result.get("review_feedback"),
+            "loop_count":           result.get("loop_count"),
+            "eval_scores":          eval_scores,
+        }
 
         # Store in memory for future context
         memory.add(query, final_report)
@@ -134,6 +167,7 @@ async def run_research_task(record_id: str, query: str):
                 record_id,
                 status="done",
                 report_markdown=final_report,
+                metadata=agent_meta,
             )
     except Exception as e:
         async with factory() as session:
@@ -165,6 +199,8 @@ async def submit_query(request: QueryRequest, background_tasks: BackgroundTasks)
 @app.get("/api/report/{report_id}", response_model=ReportResponse)
 async def get_report(report_id: str):
     """Get a specific report by ID (poll for status/result)."""
+    import json as _json
+
     factory = get_db()
     async with factory() as session:
         record = await get_query(session, report_id)
@@ -172,16 +208,22 @@ async def get_report(report_id: str):
     if not record:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    meta = None
+    # Merge markdown stats with stored agent metadata
+    meta: dict = {}
     if record.report_markdown:
-        meta = report_metadata(record.report_markdown)
+        meta.update(report_metadata(record.report_markdown))
+    if record.metadata_json:
+        try:
+            meta.update(_json.loads(record.metadata_json))
+        except Exception:
+            pass
 
     return ReportResponse(
         id=record.id,
         query=record.query,
         status=record.status,
         report_markdown=record.report_markdown,
-        metadata=meta,
+        metadata=meta or None,
         created_at=record.created_at.isoformat(),
     )
 
@@ -300,6 +342,24 @@ async def get_documents():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/report/{report_id}/trace")
+async def get_report_trace(report_id: str):
+    """
+    Get the execution trace for a report.
+    Demonstrates Session 10: DecisionTrace, audit logging.
+    """
+    try:
+        from .trace import get_trace
+        trace = get_trace(report_id)
+        if not trace:
+            raise HTTPException(status_code=404, detail="Trace not found")
+        return trace.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── Static Files & Frontend ───────────────────────────────────────────────────
 

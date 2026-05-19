@@ -21,3 +21,4 @@ markdown==3.6
 openai==1.35.0
 groq==0.9.0
 google-generativeai==0.7.2
+rank-bm25==0.2.2

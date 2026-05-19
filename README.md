@@ -1,4 +1,4 @@
-# AI Research Assistant
+# Archon AI
 
 A production-grade AI research tool that takes a natural language query, searches the web and your own documents, reasons over the results, and produces a structured, exportable report — powered by various LLM's, RAG, and a LangGraph agentic orchestration loop.
 
@@ -27,9 +27,12 @@ User Query
     │
     ▼
 Orchestrator Agent (LangGraph)
-    │  ├── RAG Tool        → ChromaDB vector search (your docs)
-    │  ├── Web Search Tool → Tavily Search API (live web)
-    │  └── LLM Reasoning  → Various LLM's
+    │  ├── Planner Agent
+    │  ├── Researcher Agent (Hybrid BM25 + Semantic)
+    │  ├── Validator Agent
+    │  ├── Summarizer Agent
+    │  ├── Report Writer Agent
+    │  └── Reviewer Agent (with self-correcting loop)
     │
     ▼
 Structured Output Engine
@@ -50,7 +53,7 @@ React Frontend (report viewer + upload panel + history sidebar)
 | Backend | Python 3.11+, FastAPI |
 | Agent orchestration | LangChain + LangGraph |
 | LLM | Groq API | Gemini API | OpenAI API | Claude API |
-| Vector DB | ChromaDB (local, persisted to disk) |
+| Vector DB & Retrieval | ChromaDB (local) + rank-bm25 (Keyword search) |
 | Web search | Tavily Search API |
 | Document parsing | PyMuPDF, python-docx, LangChain splitters |
 | Embeddings | OpenAI `text-embedding-3-small` (optional) or HuggingFace `all-MiniLM-L6-v2` (free, local fallback) |
@@ -65,25 +68,28 @@ React Frontend (report viewer + upload panel + history sidebar)
 ## Project Structure
 
 ```
-research-assistant/
+archon-ai/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app + CORS + all routes
+│   │   ├── main.py                  # FastAPI app + API routes (including trace endpoints)
+│   │   ├── trace.py                 # DecisionTrace system for full agent observability
 │   │   ├── agent/
-│   │   │   ├── orchestrator.py      # LangGraph graph: planner → researcher → synthesizer
-│   │   │   ├── tools.py             # web_search (Tavily) + rag_search (ChromaDB)
-│   │   │   └── prompts.py           # System prompts + report structure template
+│   │   │   ├── orchestrator.py      # LangGraph 6-node graph with conditional review loops
+│   │   │   ├── tools.py             # web_search + hybrid rag_search
+│   │   │   └── prompts.py           # Planner, Researcher, Validator, Summarizer, Writer, Reviewer prompts
 │   │   ├── rag/
-│   │   │   ├── ingest.py            # Load PDF/DOCX → chunk → embed → store in ChromaDB
-│   │   │   ├── retriever.py         # Similarity search over ChromaDB
-│   │   │   └── embeddings.py        # Embedding model config (OpenAI or HuggingFace)
+│   │   │   ├── ingest.py            # Document parsing + ChromaDB ingest
+│   │   │   ├── retriever.py         # Hybrid search (Rank-BM25 Keyword + Semantic ChromaDB)
+│   │   │   └── embeddings.py        # Embedding model config
+│   │   ├── evaluation/
+│   │   │   └── metrics.py           # RAGAS-style metrics (Faithfulness, Relevance, Coverage)
 │   │   ├── output/
-│   │   │   ├── formatter.py         # Report header, summary extraction, metadata
-│   │   │   └── pdf_export.py        # Markdown → styled HTML → PDF via WeasyPrint
+│   │   │   ├── formatter.py         # Markdown structuring and extraction
+│   │   │   └── pdf_export.py        # Markdown to PDF export
 │   │   ├── memory/
-│   │   │   └── store.py             # In-process session memory (last N queries)
+│   │   │   └── store.py             # In-memory history for contextual multi-turn
 │   │   └── db/
-│   │       └── models.py            # SQLAlchemy async models + CRUD helpers
+│   │       └── models.py            # SQLite queries + agent metadata persistence
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
@@ -92,20 +98,20 @@ research-assistant/
 │   ├── tailwind.config.js
 │   ├── src/
 │   │   ├── main.jsx
-│   │   ├── App.jsx                  # Root layout: sidebar + main + upload panel
-│   │   ├── index.css                # All custom styles + CSS variables
+│   │   ├── App.jsx                  # Main layout
+│   │   ├── index.css                # Tailwind base + Custom styles (metric bars, timeline)
 │   │   ├── components/
-│   │   │   ├── QueryInput.jsx       # Query textarea + submit button
-│   │   │   ├── ReportViewer.jsx     # Markdown report renderer + PDF export link
-│   │   │   ├── UploadPanel.jsx      # File upload + indexed documents list
-│   │   │   └── HistorySidebar.jsx   # Past queries with status + delete
+│   │   │   ├── QueryInput.jsx
+│   │   │   ├── ReportViewer.jsx     # Markdown renderer + RAGAS metric display
+│   │   │   ├── AgentTrace.jsx       # Real-time multi-agent observability panel
+│   │   │   ├── UploadPanel.jsx
+│   │   │   └── HistorySidebar.jsx
 │   │   └── api/
-│   │       └── client.js            # Axios wrapper for all backend API calls
+│   │       └── client.js            # Axios client with getTrace implementation
 │   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml
-├── .env                             # Your actual keys — DO NOT commit to git
-├── .env.example                     # Template with placeholder values
+├── .env                             # Your actual keys
 └── README.md
 ```
 
@@ -163,8 +169,8 @@ GEMINI_API_KEY="YOUR_GEMINI_KEY"
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/shanmukhraj7/research-assistant
-cd research-assistant
+git clone https://github.com/shanmukhraj7/archon-ai
+cd archon-ai
 
 # 2. Create and fill in your .env
 cp .env.example .env
@@ -219,6 +225,7 @@ npm run dev
 | `DELETE` | `/api/history/{id}` | Delete a past query |
 | `POST` | `/api/upload` | Upload a PDF or DOCX for RAG indexing |
 | `GET` | `/api/documents` | List all uploaded and indexed documents |
+| `GET` | `/api/report/{id}/trace` | Get full execution trace of the agent pipeline |
 | `GET` | `/health` | Health check |
 
 ---
@@ -227,22 +234,50 @@ npm run dev
 
 ### LangGraph Orchestrator (`agent/orchestrator.py`)
 
-Three-node stateful graph:
+A 6-node stateful multi-agent system with conditional routing:
 
 ```
-planner → researcher → synthesizer → END
+planner → researcher → validator → summarizer → report_writer → reviewer
+                ↑                                                    |
+                └──────── (if review_score < 7, loop back) ─────────┘
 ```
 
-- **planner**: Calls Claude to break the query into 3–5 targeted sub-queries (returns JSON array)
-- **researcher**: Runs `multi_query_web_search` + `multi_query_rag_search` in parallel across all sub-queries, deduplicates results
-- **synthesizer**: Calls Claude with all gathered context + enforced report template to write the final structured report
+- **planner**: Breaks the query into targeted sub-queries.
+- **researcher**: Rewrites queries and runs hybrid retrieval (BM25 + Semantic search).
+- **validator**: Scores the retrieved sources for relevance, credibility, and recency.
+- **summarizer**: Produces a structured bullet-point summary from raw context.
+- **report_writer**: Expands the summary into the final formatted report.
+- **reviewer**: Critiques the report. If the score is < 7, it triggers a retry loop back to the researcher (max 2 loops).
+
+---
+
+## Evaluation Metrics
+
+The system uses lightweight, RAGAS-style evaluation metrics (without external dependencies) to measure report quality:
+
+- **Faithfulness**: Measures what fraction of the report's claims are grounded in retrieved sources (hallucination detection).
+- **Answer Relevance**: Evaluates whether the report directly addresses the original user query.
+- **Source Coverage**: Measures how many of the planner's sub-queries were addressed in the final report.
+
+Scores are displayed on the frontend upon report completion.
+
+---
+
+## Agent Trace API
+
+The `DecisionTrace` system (`trace.py`) records what each agent received, what it decided, and how long it took. 
+You can view the audit log via the frontend Agent Trace panel or directly via the API:
+
+`GET /api/report/{id}/trace`
+
+This makes the black-box agent pipeline completely transparent and observable.
 
 ### RAG Pipeline (`rag/ingest.py` + `rag/retriever.py`)
 
 - Supports PDF (via PyMuPDF) and DOCX (via python-docx)
 - Chunks with `RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)`
 - Embeds with OpenAI or HuggingFace and stores in ChromaDB (persisted to `./data/chroma`)
-- Retrieval: top-k cosine similarity search, deduplicated across multiple sub-queries
+- Retrieval: Hybrid Search combining top-k cosine similarity (ChromaDB) with keyword matching (rank-bm25) via Reciprocal Rank Fusion.
 
 ### Session Memory (`memory/store.py`)
 
@@ -277,14 +312,18 @@ chromadb==0.5.0
 tavily-python==0.3.3
 pymupdf==1.24.5
 python-docx==1.1.2
-weasyprint==62.1
-pydyf=0.10.0
+weasyprint==60.1
+pydyf==0.10.0
 pydantic==2.7.0
 python-multipart==0.0.9
 sqlalchemy==2.0.30
 aiosqlite==0.20.0
 python-dotenv==1.0.1
 httpx==0.27.0
-markdown
+markdown==3.6
+openai==1.35.0
+groq==0.9.0
+google-generativeai==0.7.2
+rank-bm25==0.2.2
 ```
 
