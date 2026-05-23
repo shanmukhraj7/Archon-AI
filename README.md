@@ -59,7 +59,7 @@ React Frontend (report viewer + upload panel + history sidebar)
 | Web search | Tavily Search API |
 | Document parsing | PyMuPDF, python-docx, LangChain splitters |
 | Embeddings | HuggingFace `all-MiniLM-L6-v2` (Local, free) |
-| Frontend | React 18 + Vite + TailwindCSS |
+| Frontend | React 18 + React Router + Vite + TailwindCSS |
 | Report rendering | React-Markdown + remark-gfm |
 | PDF export | WeasyPrint |
 | Database | SQLite (async via aiosqlite) |
@@ -74,12 +74,12 @@ archon-ai/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI app + API routes (including trace endpoints)
-│   │   ├── auth.py                  # Authentication endpoints and JWT token management
+│   │   ├── auth.py                  # Authentication logic and JWT handling
 │   │   ├── trace.py                 # DecisionTrace system for full agent observability
 │   │   ├── agent/
 │   │   │   ├── orchestrator.py      # LangGraph 6-node graph with conditional review loops
-│   │   │   ├── multi_agent_coordinator.py # Coordinator and query router logic
-│   │   │   ├── memory_agent.py      # Stateful memory node for LLM agents
+│   │   │   ├── multi_agent_coordinator.py # Coordinator for multi-agent workflows
+│   │   │   ├── memory_agent.py      # Agent responsible for memory handling
 │   │   │   ├── tools.py             # web_search + hybrid rag_search
 │   │   │   └── prompts.py           # Planner, Researcher, Validator, Summarizer, Writer, Reviewer prompts
 │   │   ├── rag/
@@ -102,25 +102,43 @@ archon-ai/
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── tailwind.config.js
-│   ├── postcss.config.js
 │   ├── src/
 │   │   ├── main.jsx
-│   │   ├── App.jsx                  # Main layout and routing logic
-│   │   ├── index.css                # Tailwind base + Custom styles (metric bars, timeline)
+│   │   ├── App.jsx                  # Main layout and routing setup
+│   │   ├── index.css                # Tailwind base + Custom styles
 │   │   ├── api/
-│   │   │   ├── client.js            # Axios client with getTrace implementation
-│   │   │   └── auth.js              # Authentication hooks
-│   │   ├── components/              # UI components (QueryInput, ReportViewer, UploadPanel, etc.)
-│   │   ├── context/                 # React Contexts (AuthContext, ToastContext)
-│   │   ├── layouts/                 # Page Layouts (AppLayout, AuthLayout)
-│   │   └── pages/                   # All routed views (Login, Register, Research, Settings, etc.)
+│   │   │   ├── client.js            # Axios client with interceptors
+│   │   │   └── auth.js              # API endpoints for authentication
+│   │   ├── components/
+│   │   │   ├── QueryInput.jsx
+│   │   │   ├── ReportViewer.jsx     # Markdown renderer + RAGAS metric display
+│   │   │   ├── UploadPanel.jsx
+│   │   │   └── HistorySidebar.jsx
+│   │   ├── context/
+│   │   │   ├── AuthContext.jsx      # React context for global auth state
+│   │   │   └── ToastContext.jsx     # React context for toast notifications
+│   │   ├── layouts/
+│   │   │   ├── AppLayout.jsx        # Layout for authenticated app pages
+│   │   │   └── AuthLayout.jsx       # Layout for auth pages (login/register)
+│   │   └── pages/                   # Application views/pages
+│   │       ├── AnalysisPage.jsx
+│   │       ├── ArchivesPage.jsx
+│   │       ├── DraftsPage.jsx
+│   │       ├── HelpPage.jsx
+│   │       ├── HistoryPage.jsx
+│   │       ├── LoginPage.jsx
+│   │       ├── LogoutPage.jsx
+│   │       ├── NotFoundPage.jsx
+│   │       ├── NotificationsPage.jsx
+│   │       ├── ProfilePage.jsx
+│   │       ├── RegisterPage.jsx
+│   │       ├── ResearchPage.jsx
+│   │       ├── SettingsPage.jsx
+│   │       └── SynthesisPage.jsx
 │   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml
-├── Dockerfile                       # Multi-stage or alternate build file
 ├── .env                             # Your environment variables
-├── .env.example                     # Environment variable template
-├── .gitignore
 └── README.md
 ```
 
@@ -150,6 +168,8 @@ You only need an API key for the Web Search capability.
 3. Open `.env` and fill it in:
    ```env
    TAVILY_API_KEY="tvly-your-tavily-api-key"
+   CHROMA_PERSIST_DIR="./data/chroma"
+   SQLITE_DB_PATH="./data/history.db"
    
    # Note: For Docker, host.docker.internal allows the backend container to reach Ollama on the host machine.
    OLLAMA_BASE_URL="http://host.docker.internal:11434"
@@ -176,11 +196,13 @@ docker compose up --build
 ## How to Use
 
 1. **Create an account** — Go to `http://localhost:5173/register` and make an account (data is stored locally in SQLite).
-2. **Submit a query** — Type your research question in the text box and press "Research →"
-3. **Wait for the pipeline** — The local Llama 3.2 model will systematically plan, research, validate, summarize, and write the report. *(Note: Because local models run on your CPU/GPU, a full 6-agent report generation will take about 1-2 minutes depending on your hardware).*
-4. **Browse history** — Past queries appear in the left sidebar; click any to reload.
-5. **Upload documents** — Use the right panel to upload PDFs or DOCX files; they get chunked and indexed into ChromaDB for RAG.
-6. **Export PDF** — Click "↓ Export PDF" above any completed report to download it.
+2. **Submit a query** — From the **Research** page, type your research question in the text box and press "Research →"
+3. **Wait for the pipeline** — The multi-agent system will systematically plan, research, validate, summarize, and write the report. *(Note: Because local models run on your CPU/GPU, a full 6-agent report generation will take about 1-2 minutes depending on your hardware).*
+4. **Browse history** — Use the **History** and **Archives** pages to view past queries, or check the **Drafts** page for ongoing work.
+5. **Analyze & Synthesize** — Use the dedicated **Analysis** and **Synthesis** pages to drill down into specific agent outputs and metrics.
+6. **Upload documents** — Upload PDFs or DOCX files for RAG indexing; they get chunked and indexed into ChromaDB.
+7. **Export PDF** — Export any completed report as a formatted PDF document.
+8. **Manage Profile** — Update your preferences and notifications from the **Profile** and **Settings** pages.
 
 ---
 
@@ -202,6 +224,13 @@ planner → researcher → validator → summarizer → report_writer → review
 - **summarizer**: Produces a structured bullet-point summary from raw context.
 - **report_writer**: Expands the summary into the final formatted report.
 - **reviewer**: Critiques the report. If the score is < 7, it triggers a retry loop back to the researcher (max 2 loops).
+
+### Multi-Agent Coordinator & Memory
+
+The system includes advanced coordination and memory layers to support the primary orchestrator:
+
+- **Memory Agent (`agent/memory_agent.py`)**: Handles episodic and semantic memory storage/retrieval across sessions.
+- **Multi-Agent Coordinator (`agent/multi_agent_coordinator.py`)**: Responsible for query routing (directing queries to specialized agents), agent health monitoring, and tracking agent capabilities and performance metrics.
 
 ---
 
@@ -233,6 +262,9 @@ Scores are displayed on the frontend upon report completion.
 | `DELETE` | `/api/history/{id}` | Delete a past query |
 | `POST` | `/api/upload` | Upload a PDF or DOCX for RAG indexing |
 | `GET` | `/api/documents` | List all uploaded and indexed documents |
+| `GET` | `/api/agents/status` | Get current status of all running agents |
+| `GET` | `/api/agents/capabilities` | List capabilities of the multi-agent system |
+| `GET` | `/api/agents/health` | Health check specifically for agent services |
 
 ---
 
@@ -242,15 +274,24 @@ Scores are displayed on the frontend upon report completion.
 fastapi>=0.111.0
 uvicorn>=0.30.0
 langchain>=0.2.0
+langchain-community>=0.2.0
 langgraph>=0.1.5
 chromadb>=0.5.0
 tavily-python>=0.3.3
 pymupdf>=1.25.0
 python-docx>=1.1.2
 weasyprint>=60.0
+pydantic>=2.7.0
+python-multipart>=0.0.9
 sqlalchemy>=2.0.30
 aiosqlite>=0.20.0
+python-dotenv>=1.0.1
+httpx>=0.27.0
+markdown>=3.6
+groq>=0.9.0
+google-generativeai>=0.7.2
+rank-bm25>=0.2.2
 sentence-transformers>=2.7.0
-passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 ```

@@ -4,6 +4,7 @@ Structured markdown generation and post-processing utilities.
 
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 def ensure_report_structure(raw_report: str, query: str) -> str:
@@ -11,7 +12,8 @@ def ensure_report_structure(raw_report: str, query: str) -> str:
     Ensure the report has a title and timestamp header.
     Cleans up minor formatting issues.
     """
-    timestamp = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+    ist = ZoneInfo("Asia/Kolkata")
+    timestamp = datetime.now(ist).strftime("%B %d, %Y at %H:%M IST")
 
     header = f"# Research Report\n\n**Query:** {query}\n\n**Generated:** {timestamp}\n\n---\n\n"
 
