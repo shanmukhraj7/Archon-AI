@@ -489,12 +489,12 @@ async def get_agents_status():
     Used by the frontend Pipeline Status panel.
     """
     agents = [
-        {"id": "planner",      "name": "Research Planner",  "icon": "", "role": "Decomposes query into sub-questions"},
-        {"id": "researcher",   "name": "Retrieval Agent",   "icon": "", "role": "Hybrid BM25 + semantic search"},
-        {"id": "validator",    "name": "Source Validator",  "icon": "", "role": "Scores source quality 1–10"},
-        {"id": "summarizer",   "name": "Summarizer",        "icon": "", "role": "Extracts key findings"},
-        {"id": "report_writer","name": "Report Writer",     "icon": "", "role": "Formats structured report"},
-        {"id": "reviewer",     "name": "Reviewer",          "icon": "", "role": "QA gate with ReAct loop"},
+        {"id": "planner",      "name": "Research Planner",  "role": "Decomposes query into sub-questions"},
+        {"id": "researcher",   "name": "Retrieval Agent",   "role": "Hybrid BM25 + semantic search"},
+        {"id": "validator",    "name": "Source Validator",  "role": "Scores source quality 1–10"},
+        {"id": "summarizer",   "name": "Summarizer",        "role": "Extracts key findings"},
+        {"id": "report_writer","name": "Report Writer",     "role": "Formats structured report"},
+        {"id": "reviewer",     "name": "Reviewer",          "role": "QA gate with ReAct loop"},
     ]
 
     # Collect aggregate stats from trace store
