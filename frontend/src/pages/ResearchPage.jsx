@@ -14,6 +14,20 @@ export default function ResearchPage() {
   const [activeReport, setActiveReport] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const pollReport = useCallback(async (reportId) => {
+    try {
+      const res = await getReport(reportId);
+      setActiveReport(res.data);
+      if (res.data.status === "running" || res.data.status === "pending") {
+        setTimeout(() => pollReport(reportId), 2500);
+      } else {
+        setIsLoading(false);
+      }
+    } catch {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Load report when navigating to /research/:id
   useEffect(() => {
     if (id) {
@@ -32,21 +46,7 @@ export default function ResearchPage() {
     } else {
       setActiveReport(null);
     }
-  }, [id, pollReport]);
-
-  const pollReport = useCallback(async (reportId) => {
-    try {
-      const res = await getReport(reportId);
-      setActiveReport(res.data);
-      if (res.data.status === "running" || res.data.status === "pending") {
-        setTimeout(() => pollReport(reportId), 2500);
-      } else {
-        setIsLoading(false);
-      }
-    } catch {
-      setIsLoading(false);
-    }
-  }, []);
+  }, [id, pollReport, navigate, showError]);
 
   const handleSubmit = async (query) => {
     setIsLoading(true);
