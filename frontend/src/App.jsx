@@ -1,89 +1,76 @@
-import { useState, useCallback } from "react";
-import QueryInput from "./components/QueryInput";
-import ReportViewer from "./components/ReportViewer";
-import HistorySidebar from "./components/HistorySidebar";
-import UploadPanel from "./components/UploadPanel";
-import { submitQuery, getReport } from "./api/client";
+import { Routes, Route, Navigate } from "react-router-dom";
+import AppLayout from "./layouts/AppLayout";
+import ResearchPage       from "./pages/ResearchPage";
+import HistoryPage        from "./pages/HistoryPage";
+import AnalysisPage       from "./pages/AnalysisPage";
+import SynthesisPage      from "./pages/SynthesisPage";
+import ArchivesPage       from "./pages/ArchivesPage";
+import DraftsPage         from "./pages/DraftsPage";
+import SettingsPage       from "./pages/SettingsPage";
+import NotificationsPage  from "./pages/NotificationsPage";
+import ProfilePage        from "./pages/ProfilePage";
+import HelpPage           from "./pages/HelpPage";
+import LogoutPage         from "./pages/LogoutPage";
+import NotFoundPage       from "./pages/NotFoundPage";
+import LoginPage          from "./pages/LoginPage";
+import RegisterPage       from "./pages/RegisterPage";
+import { useAuth }        from "./context/AuthContext";
 import "./index.css";
 
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <span className="material-symbols-outlined text-primary text-[32px] animate-spin">refresh</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
 export default function App() {
-  const [activeReport, setActiveReport] = useState(null);
-  const [isLoading,    setIsLoading]    = useState(false);
-  const [sidebarKey,   setSidebarKey]   = useState(0);
-
-  const pollReport = useCallback(async (id) => {
-    try {
-      const res = await getReport(id);
-      setActiveReport(res.data);
-      if (res.data.status === "running" || res.data.status === "pending") {
-        setTimeout(() => pollReport(id), 2500);
-      } else {
-        setIsLoading(false);
-        setSidebarKey((k) => k + 1);
-      }
-    } catch {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const handleSubmit = async (query) => {
-    setIsLoading(true);
-    setActiveReport(null);
-    try {
-      const res = await submitQuery(query);
-      setActiveReport({ id: res.data.id, query, status: "pending" });
-      pollReport(res.data.id);
-    } catch {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSelectHistory = async (id) => {
-    try { const res = await getReport(id); setActiveReport(res.data); } catch {}
-  };
-
   return (
-    <div className="app-layout">
-      <HistorySidebar key={sidebarKey} onSelect={handleSelectHistory} activeId={activeReport?.id} />
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
-      <main className="app-main">
-        <div className="main-scroll">
+      {/* Protected Routes share the AppLayout shell (sidebar + header) */}
+      <Route element={
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      }>
+        <Route index element={<Navigate to="/research" replace />} />
+        <Route path="/research"     element={<ResearchPage />} />
+        <Route path="/research/:id" element={<ResearchPage />} />
+        <Route path="/history"      element={<HistoryPage />} />
+        <Route path="/analysis"     element={<AnalysisPage />} />
+        <Route path="/synthesis"    element={<SynthesisPage />} />
+        <Route path="/archives"     element={<ArchivesPage />} />
+        <Route path="/drafts"       element={<DraftsPage />} />
+        <Route path="/settings"     element={<SettingsPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/profile"      element={<ProfilePage />} />
+        <Route path="/help"         element={<HelpPage />} />
+        <Route path="/logout"       element={<LogoutPage />} />
+      </Route>
 
-          <header className="app-header">
-            <div className="header-eyebrow">
-              <span className="header-eyebrow-line" />
-              <span className="header-eyebrow-text">AI-Powered Research</span>
-              <span className="header-eyebrow-badge">v1.0</span>
-            </div>
-
-            <h1>
-              Research at the<br />speed of <em>thought.</em>
-            </h1>
-
-            <p className="header-desc">
-              Ask any research question. Archon searches the web, scours your
-              documents, and synthesizes a structured, exportable report — in seconds.
-            </p>
-
-            <div className="header-chips">
-              {["Web Search", "RAG Retrieval", "PDF Export", "Multi-LLM"].map((c) => (
-                <span key={c} className="header-chip">
-                  <span className="chip-dot" />
-                  {c}
-                </span>
-              ))}
-            </div>
-          </header>
-
-          <QueryInput onSubmit={handleSubmit} isLoading={isLoading} />
-          <ReportViewer report={activeReport} />
-
+      {/* 404 — outside layout so it's full screen */}
+      <Route path="*" element={
+        <div className="flex h-screen overflow-hidden bg-background">
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <NotFoundPage />
+          </div>
         </div>
-      </main>
-
-      <aside className="app-right">
-        <UploadPanel reportMetadata={activeReport?.metadata} />
-      </aside>
-    </div>
+      } />
+    </Routes>
   );
 }

@@ -1,20 +1,23 @@
 """
 FastAPI application entry point.
 Routes: /api/query, /api/upload, /api/history, /api/report/{id},
-        /api/report/{id}/pdf, /api/report/{id}/trace
+        /api/report/{id}/pdf, /api/report/{id}/trace, /api/agents/status,
+        /api/report/{id}/stream
 """
 
 import os
 import asyncio
 import shutil
+import json as _json_module
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, FileResponse
+from fastapi.responses import Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, field_validator
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,7 +32,11 @@ from .db.models import (
     delete_query,
     create_document,
     list_documents,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
 )
+from .auth import hash_password, verify_password, create_access_token, decode_token
 from .agent.orchestrator import run_research
 from .output.formatter import ensure_report_structure, report_metadata
 from .output.pdf_export import export_pdf
@@ -107,6 +114,48 @@ class DocumentResponse(BaseModel):
     created_at: str
 
 
+# ── Auth Schemas ───────────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: dict
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    created_at: str
+
+
+# Bearer token dependency
+_bearer = HTTPBearer(auto_error=False)
+
+
+def get_current_user_payload(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> dict:
+    """Decode Bearer token; raise 401 if missing or invalid."""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
+
+
 # ── Background task ───────────────────────────────────────────────────────────
 
 async def run_research_task(record_id: str, query: str):
@@ -179,7 +228,77 @@ async def run_research_task(record_id: str, query: str):
             )
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Auth Routes ───────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/register", response_model=TokenResponse)
+async def register(request: RegisterRequest):
+    """Register a new user and return a JWT access token."""
+    username = request.username.strip()
+    email = request.email.lower().strip()
+    password = request.password
+
+    if len(username) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    factory = get_db()
+    async with factory() as session:
+        existing = await get_user_by_email(session, email)
+        if existing:
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+        password_hash = hash_password(password)
+        user = await create_user(session, username, email, password_hash)
+
+    token = create_access_token(user.id, user.email, user.username)
+    return TokenResponse(
+        access_token=token,
+        user={"id": user.id, "username": user.username, "email": user.email,
+              "created_at": user.created_at.isoformat()},
+    )
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(request: LoginRequest):
+    """Authenticate with email + password and return a JWT access token."""
+    email = request.email.lower().strip()
+
+    factory = get_db()
+    async with factory() as session:
+        user = await get_user_by_email(session, email)
+
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    token = create_access_token(user.id, user.email, user.username)
+    return TokenResponse(
+        access_token=token,
+        user={"id": user.id, "username": user.username, "email": user.email,
+              "created_at": user.created_at.isoformat()},
+    )
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_me(payload: dict = Depends(get_current_user_payload)):
+    """Return the currently authenticated user's profile."""
+    factory = get_db()
+    async with factory() as session:
+        user = await get_user_by_id(session, payload["sub"])
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+# ── Research Routes ──────────────────────────────────────────────────────────────
 
 @app.post("/api/query", response_model=QueryResponse)
 async def submit_query(request: QueryRequest, background_tasks: BackgroundTasks):
@@ -222,7 +341,7 @@ async def get_report(report_id: str):
         id=record.id,
         query=record.query,
         status=record.status,
-        report_markdown=record.report_markdown,
+        report_markdown=record.report_markdown or record.error_message,
         metadata=meta or None,
         created_at=record.created_at.isoformat(),
     )
@@ -360,6 +479,150 @@ async def get_report_trace(report_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/agents/status")
+async def get_agents_status():
+    """
+    Returns a health snapshot of the 6-agent pipeline and key stats.
+    Concept: Session 14 (LLMOps, production monitoring, dashboards).
+    Used by the frontend Pipeline Status panel.
+    """
+    agents = [
+        {"id": "planner",      "name": "Research Planner",  "icon": "", "role": "Decomposes query into sub-questions"},
+        {"id": "researcher",   "name": "Retrieval Agent",   "icon": "", "role": "Hybrid BM25 + semantic search"},
+        {"id": "validator",    "name": "Source Validator",  "icon": "", "role": "Scores source quality 1–10"},
+        {"id": "summarizer",   "name": "Summarizer",        "icon": "", "role": "Extracts key findings"},
+        {"id": "report_writer","name": "Report Writer",     "icon": "", "role": "Formats structured report"},
+        {"id": "reviewer",     "name": "Reviewer",          "icon": "", "role": "QA gate with ReAct loop"},
+    ]
+
+    # Collect aggregate stats from trace store
+    try:
+        from .trace import _traces
+        total_jobs = len(_traces)
+        if total_jobs > 0:
+            all_traces = list(_traces.values())
+            avg_duration = sum(
+                t.to_dict().get("total_duration_ms", 0) for t in all_traces
+            ) / total_jobs
+            all_passed = sum(1 for t in all_traces if t.to_dict().get("all_passed", False))
+            success_rate = round(all_passed / total_jobs * 100, 1)
+        else:
+            avg_duration = 0
+            success_rate = 100.0
+    except Exception:
+        total_jobs = 0
+        avg_duration = 0
+        success_rate = 100.0
+
+    return {
+        "agents": agents,
+        "pipeline_topology": {
+            "flow": ["planner", "researcher", "validator", "summarizer", "report_writer", "reviewer"],
+            "conditional_edge": {"from": "reviewer", "to": "researcher", "condition": "review_score < 7 AND loop < 2"},
+            "max_loops": 2,
+        },
+        "stats": {
+            "total_jobs": total_jobs,
+            "avg_duration_ms": round(avg_duration, 0),
+            "success_rate_pct": success_rate,
+        },
+    }
+
+
+@app.get("/api/report/{report_id}/stream")
+async def stream_report_progress(report_id: str):
+    """
+    SSE (Server-Sent Events) endpoint for real-time agent progress updates.
+    Concept: Session 12 (streaming APIs, real-time GenAI products).
+    
+    The frontend polls the standard /api/report/{id} endpoint for status,
+    but this SSE endpoint pushes trace events as they happen for a richer
+    live experience.
+    """
+    async def event_generator():
+        # Poll trace until complete or timeout (60 seconds)
+        from .trace import get_trace
+        timeout = 60
+        elapsed = 0
+        last_step_count = 0
+
+        while elapsed < timeout:
+            trace = get_trace(report_id)
+            if trace:
+                steps = trace.to_dict().get("steps", [])
+                # Send any new steps since last poll
+                new_steps = steps[last_step_count:]
+                for step in new_steps:
+                    data = _json_module.dumps({"type": "agent_step", "step": step})
+                    yield f"data: {data}\n\n"
+                last_step_count = len(steps)
+
+            # Check if report is done
+            try:
+                factory = get_db()
+                async with factory() as session:
+                    record = await get_query(session, report_id)
+                if record and record.status in ("done", "error"):
+                    payload = _json_module.dumps({"type": "complete", "status": record.status})
+                    yield f"data: {payload}\n\n"
+                    break
+            except Exception:
+                pass
+
+            await asyncio.sleep(1.5)
+            elapsed += 1.5
+
+        yield f"data: {_json_module.dumps({'type': 'timeout'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/agents/capabilities")
+async def get_agent_capabilities():
+    """
+    Returns formal capability declarations for all 6 agents.
+    Concept: Session 9 (agent identity, multi-agent architecture).
+    """
+    try:
+        from .agent.multi_agent_coordinator import get_capability_registry
+        registry = get_capability_registry()
+        return {
+            "agents": registry.get_all(),
+            "pipeline": registry.get_pipeline_summary(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/agents/health")
+async def get_agents_health():
+    """
+    Returns rolling health metrics for each agent (latency, success rate).
+    Concept: Session 14 (LLMOps, production monitoring).
+    """
+    try:
+        from .agent.multi_agent_coordinator import get_health_monitor
+        monitor = get_health_monitor()
+        return {
+            "agent_metrics": monitor.get_all_metrics(),
+            "overall_healthy": all(
+                monitor.is_healthy(aid)
+                for aid in ["planner","researcher","validator","summarizer","report_writer","reviewer"]
+            ),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ── Static Files & Frontend ───────────────────────────────────────────────────
 

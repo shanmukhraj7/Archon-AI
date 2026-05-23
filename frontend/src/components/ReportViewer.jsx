@@ -1,7 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getPdfUrl } from "../api/client";
-import AgentTrace from "./AgentTrace";
 
 export default function ReportViewer({ report }) {
   if (!report) return null;
@@ -11,32 +10,29 @@ export default function ReportViewer({ report }) {
   /* ── Loading ── */
   if (status === "running" || status === "pending") {
     return (
-      <div className="report-loading">
-        <div className="loading-orb-wrap">
-          <div className="loading-orb">🔍</div>
-          <div className="loading-ring" />
+      <div className="flex flex-col items-center justify-center min-h-[300px] mt-24">
+        <div className="w-16 h-16 border border-[#333333] bg-[#0D0D0D] rounded flex items-center justify-center mb-8 relative">
+          <span className="material-symbols-outlined text-primary text-[32px] animate-pulse">psychology</span>
         </div>
+        <h2 className="font-display text-[32px] font-bold text-primary mb-4 tracking-tighter">
+          Synthesizing Intelligence
+        </h2>
+        <p className="font-label-caps text-on-surface-variant text-[12px] uppercase tracking-widest max-w-lg text-center leading-relaxed">
+          "{query}"
+        </p>
 
-        <div className="loading-title">
-          Researching&nbsp;
-          <span className="loading-query">"{query}"</span>
-        </div>
-
-        <div className="loading-steps">
+        <div className="mt-12 space-y-3 w-full max-w-md">
           {[
-            { icon: "🧠", label: "Planning research strategy" },
-            { icon: "🌐", label: "Executing hybrid retrieval" },
-            { icon: "✅", label: "Validating source quality" },
-            { icon: "📝", label: "Summarizing findings" },
-            { icon: "✍️", label: "Writing structured report" },
-            { icon: "🧐", label: "Reviewing for completeness" },
+            { icon: "search", label: "Information Retrieval" },
+            { icon: "verified", label: "Source Verification" },
+            { icon: "edit_document", label: "Report Generation" }
           ].map((s, i) => (
-            <div key={i} className="loading-step">
-              <span className="step-icon">{s.icon}</span>
-              <span style={{ flex: 1 }}>{s.label}…</span>
-              <div className="step-bar">
-                <div className="step-bar-fill" style={{ animationDelay: `${i * 0.6}s` }} />
+            <div key={i} className="flex items-center justify-between p-4 rounded architectural-card group">
+              <div className="flex items-center gap-4">
+                <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{s.icon}</span>
+                <span className="font-body-sm text-primary">{s.label}</span>
               </div>
+              <span className="w-2 h-2 bg-primary animate-pulse" style={{ animationDelay: `${i * 0.4}s` }}></span>
             </div>
           ))}
         </div>
@@ -46,14 +42,15 @@ export default function ReportViewer({ report }) {
 
   /* ── Error ── */
   if (status === "error") {
-    const msg = (report_markdown || "An unknown error occurred.")
-      .replace(/^##\s*Error\s*/i, "").trim();
+    const msg = (report_markdown || "An unknown error occurred.").replace(/^##\s*Error\s*/i, "").trim();
     return (
-      <div className="report-error">
-        <div className="err-icon-wrap">⚠️</div>
+      <div className="p-6 rounded border border-error bg-[#1A0505] flex gap-6 items-start mt-8">
+        <div className="w-12 h-12 rounded border border-error bg-error/10 flex items-center justify-center flex-shrink-0">
+          <span className="material-symbols-outlined text-error text-[24px]">warning</span>
+        </div>
         <div>
-          <div className="err-title">Research Failed</div>
-          <div className="err-msg">{msg}</div>
+          <h2 className="font-headline-md text-error mb-2 text-[20px]">Research Failed</h2>
+          <p className="text-error/80 font-body-sm leading-relaxed">{msg}</p>
         </div>
       </div>
     );
@@ -61,78 +58,93 @@ export default function ReportViewer({ report }) {
 
   /* ── Done ── */
   const date = created_at
-    ? new Date(created_at).toLocaleDateString("en-US", {
-        month: "short", day: "numeric", year: "numeric",
-      })
+    ? new Date(created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : "";
 
   return (
-    <div className="report-wrapper">
-      {/* Topbar */}
-      <div className="report-topbar">
-        <div className="topbar-left">
-          <span className="report-badge">
-            <span className="badge-dot" />
-            Complete
-          </span>
-
-          {metadata && (
-            <div className="report-stats">
-              <span className="report-stat">{metadata.word_count} words</span>
-              <span className="report-stat">{metadata.section_count} sections</span>
-              {date && <span className="report-stat">{date}</span>}
-            </div>
-          )}
+    <div className="animate-stepSlide">
+      {/* Report Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-surface-variant pb-8 mb-8">
+        <div className="flex-1">
+          <div className="flex gap-2 mb-4">
+            <span className="bg-surface-container-high text-outline font-label-caps text-[10px] px-2 py-1 rounded-sm border border-outline-variant">
+              SYNTHESIS REPORT
+            </span>
+            <span className="bg-surface-container-high text-outline font-label-caps text-[10px] px-2 py-1 rounded-sm border border-outline-variant flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e]"></div>
+              LIVE
+            </span>
+          </div>
+          
+          <h1 className="font-display text-[40px] leading-[1.1] text-primary font-bold mb-4 max-w-4xl tracking-tighter">
+            {query}
+          </h1>
+          
+          <div className="font-body-sm text-on-surface-variant flex flex-wrap items-center gap-4">
+            <span>Generated by Archon Core v2.0.4</span>
+            {date && (
+              <>
+                <span className="w-1 h-1 bg-outline-variant rounded-full"></span>
+                <span>Last updated {date}</span>
+              </>
+            )}
+            {metadata && (
+              <>
+                <span className="w-1 h-1 bg-outline-variant rounded-full"></span>
+                <span>{metadata.word_count} words</span>
+              </>
+            )}
+          </div>
         </div>
-
-        <div className="topbar-right">
+        
+        <div className="flex gap-4 shrink-0">
+          <button className="flex items-center gap-2 px-4 py-2 bg-transparent border border-outline-variant text-primary font-label-caps text-[12px] hover:border-primary transition-colors duration-150 rounded">
+            <span className="material-symbols-outlined text-[18px]">share</span>
+            SHARE
+          </button>
           <a
             href={getPdfUrl(id)}
             target="_blank"
             rel="noreferrer"
-            className="pdf-btn"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-background font-label-caps text-[12px] hover:opacity-90 transition-opacity duration-150 rounded"
           >
-            ↓ Export PDF
+            <span className="material-symbols-outlined text-[18px]">download</span>
+            EXPORT PDF
           </a>
         </div>
       </div>
 
-      {/* Evaluation Metrics */}
+      {/* Evaluation Metrics (Bento Grid) */}
       {metadata && metadata.eval_scores && (
-        <div className="eval-metrics">
-          <div className="eval-metrics-title">Report Quality Metrics</div>
-          <div className="eval-metrics-grid">
+        <section className="mb-12">
+          <h2 className="font-headline-md text-primary border-b border-surface-variant pb-4 mb-6">00. Evaluation Metrics</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { label: "Faithfulness", value: metadata.eval_scores.faithfulness, help: "Are claims grounded in sources?" },
-              { label: "Answer Relevance", value: metadata.eval_scores.answer_relevance, help: "Does the report answer the query?" },
-              { label: "Source Coverage", value: metadata.eval_scores.source_coverage, help: "Were all sub-topics addressed?" }
+              { label: "FAITHFULNESS", value: metadata.eval_scores.faithfulness, help: "Are claims grounded in sources?", suffix: "%" },
+              { label: "ANSWER RELEVANCE", value: metadata.eval_scores.answer_relevance, help: "Does the report answer the query?", suffix: "%" },
+              { label: "SOURCE COVERAGE", value: metadata.eval_scores.source_coverage, help: "Were all sub-topics addressed?", suffix: "%" }
             ].map((metric, idx) => {
               const pct = Math.round((metric.value || 0) * 100);
               return (
-                <div key={idx} className="metric-card" title={metric.help}>
-                  <div className="metric-header">
-                    <span>{metric.label}</span>
-                    <span className="metric-pct">{pct}%</span>
-                  </div>
-                  <div className="metric-bar-bg">
-                    <div className="metric-bar-fill" style={{ width: `${pct}%`, backgroundColor: pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444' }} />
+                <div key={idx} className="bg-surface-container-lowest border border-outline-variant p-6 hover:bg-surface-container transition-colors duration-200 group" title={metric.help}>
+                  <span className="font-label-caps text-outline block mb-2 text-[10px] tracking-widest">{metric.label}</span>
+                  <span className="font-headline-lg text-primary block text-[32px] mb-1">{pct}{metric.suffix}</span>
+                  <div className="w-full bg-[#111] h-1 rounded-none mt-2 overflow-hidden border border-outline-variant">
+                     <div className="bg-primary h-full" style={{ width: `${pct}%` }}></div>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Agent Trace Panel */}
-      <AgentTrace reportId={id} metadata={metadata} />
-
-      {/* Body */}
-      <div className="report-body">
+      {/* Report Body */}
+      <article className="report-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {report_markdown}
         </ReactMarkdown>
-      </div>
+      </article>
     </div>
   );
 }

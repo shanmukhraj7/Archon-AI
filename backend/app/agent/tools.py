@@ -81,7 +81,7 @@ def multi_query_rag_search(queries: List[str], k_per_query: int = 3) -> str:
     Run multiple RAG searches across sub-queries, deduplicate chunks.
     """
     from ..rag.retriever import hybrid_retrieve
-    from langchain.docstore.document import Document
+    from langchain_core.documents import Document
 
     seen_contents = set()
     all_docs: List[Document] = []

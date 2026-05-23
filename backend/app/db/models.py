@@ -37,6 +37,16 @@ class UploadedDocument(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Engine & session factory ──────────────────────────────────────────────────
 
 _engine = None
@@ -153,3 +163,33 @@ async def list_documents(session: AsyncSession) -> List[UploadedDocument]:
         select(UploadedDocument).order_by(UploadedDocument.created_at.desc())
     )
     return result.scalars().all()
+
+
+# ── User CRUD ────────────────────────────────────────────────────────────────
+
+async def create_user(
+    session: AsyncSession, username: str, email: str, password_hash: str
+) -> User:
+    user = User(
+        id=str(uuid.uuid4()),
+        username=username,
+        email=email.lower().strip(),
+        password_hash=password_hash,
+        created_at=datetime.utcnow(),
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def get_user_by_email(session: AsyncSession, email: str) -> Optional["User"]:
+    result = await session.execute(
+        select(User).where(User.email == email.lower().strip())
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_id(session: AsyncSession, user_id: str) -> Optional["User"]:
+    result = await session.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()

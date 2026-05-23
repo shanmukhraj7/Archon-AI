@@ -66,113 +66,56 @@ def _is_quota_error(e: Exception) -> bool:
     return any(p in str(e).lower() for p in _FALLTHROUGH_PHRASES)
 
 
-def _call_llm(system: str, user: str, max_tokens: int = 4096) -> str:
-    providers = []
-
-    if os.environ.get("GROQ_API_KEY"):
-        providers.append(("Groq",   lambda: _call_groq(system, user, max_tokens)))
-    if os.environ.get("GEMINI_API_KEY"):
-        providers.append(("Gemini", lambda: _call_gemini(system, user, max_tokens)))
-    if os.environ.get("OPENAI_API_KEY"):
-        providers.append(("OpenAI", lambda: _call_openai(system, user, max_tokens)))
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        providers.append(("Claude", lambda: _call_claude(system, user, max_tokens)))
-
-    if not providers:
-        raise RuntimeError(
-            "No LLM API key found. Add at least one to your .env:\n"
-            "  GROQ_API_KEY      — console.groq.com            (FREE)\n"
-            "  OPENAI_API_KEY    — platform.openai.com/api-keys\n"
-            "  GEMINI_API_KEY    — aistudio.google.com/apikey  (FREE)\n"
-            "  ANTHROPIC_API_KEY — console.anthropic.com"
-        )
-
-    last_error = None
-    for name, fn in providers:
-        try:
-            logger.info(f"Trying LLM provider: {name}")
-            result = fn()
-            logger.info(f"Success with provider: {name}")
-            return result
-        except Exception as e:
-            if _is_quota_error(e):
-                logger.warning(f"{name} quota/rate error, falling through. Error: {e}")
-                last_error = e
-                continue
-            raise
-
-    raise RuntimeError(
-        f"All LLM providers exhausted (quota/rate limits). Last error: {last_error}"
-    )
+def _call_llm(system: str, user: str, max_tokens: int = 4096, require_json: bool = False) -> str:
+    try:
+        logger.info(f"Trying LLM provider: Ollama (llama3.2)")
+        result = _call_ollama(system, user, max_tokens, require_json)
+        logger.info(f"Success with provider: Ollama")
+        return result
+    except Exception as e:
+        logger.warning(f"Ollama failed. Is it running? Error: {e}")
+        raise RuntimeError(f"Ollama failed. Please run 'ollama serve' and 'ollama pull llama3.2'. Error: {e}")
 
 
 # ── Provider implementations ──────────────────────────────────────────────────
 
-def _call_groq(system: str, user: str, max_tokens: int) -> str:
-    from groq import Groq
+def _call_ollama(system: str, user: str, max_tokens: int, require_json: bool = False) -> str:
+    import requests
+    import os
 
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        max_tokens=min(max_tokens, 8000),
-        temperature=0.3,
-        messages=[
+    # Use OLLAMA_BASE_URL if provided, else default to host.docker.internal
+    base_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    url = f"{base_url}/api/chat"
+
+    payload = {
+        "model": "llama3.2",
+        "messages": [
             {"role": "system", "content": system},
-            {"role": "user",   "content": user},
+            {"role": "user", "content": user}
         ],
-    )
-    return response.choices[0].message.content
+        "options": {
+            "temperature": 0.3,
+            "num_predict": max_tokens
+        },
+        "stream": False
+    }
+    
+    if require_json:
+        payload["format"] = "json"
+
+    response = requests.post(url, json=payload, timeout=120)
+    response.raise_for_status()
+    return response.json()["message"]["content"]
 
 
-def _call_openai(system: str, user: str, max_tokens: int) -> str:
-    from openai import OpenAI
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        max_tokens=max_tokens,
-        temperature=0.3,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
-    return response.choices[0].message.content
-
-
-def _call_gemini(system: str, user: str, max_tokens: int) -> str:
-    import google.generativeai as genai
-
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-lite",
-        system_instruction=system,
-        generation_config=genai.types.GenerationConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.3,
-        ),
-    )
-    return model.generate_content(user).text
-
-
-def _call_claude(system: str, user: str, max_tokens: int) -> str:
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    return response.content[0].text
 
 
 # ── Trace helper ──────────────────────────────────────────────────────────────
 
 def _log_trace(state: ResearchState, node: str, input_text: str,
                output_text: str, duration_ms: float, success: bool, **meta):
-    """Log to DecisionTrace if a trace exists for this job."""
+    """Log to DecisionTrace and AgentHealthMonitor."""
     try:
         from ..trace import get_trace
         trace = get_trace(state.get("job_id", ""))
@@ -180,6 +123,17 @@ def _log_trace(state: ResearchState, node: str, input_text: str,
             trace.log(node, input_text, output_text, duration_ms, success, **meta)
     except Exception:
         pass  # Trace is optional — never break agent execution
+
+    # Record to health monitor
+    try:
+        from .multi_agent_coordinator import get_health_monitor
+        monitor = get_health_monitor()
+        if success:
+            monitor.record_success(node, duration_ms)
+        else:
+            monitor.record_failure(node, meta.get("error", "unknown"), duration_ms)
+    except Exception:
+        pass
 
 
 # ── Helper: query rewriting ───────────────────────────────────────────────────
@@ -238,6 +192,7 @@ def plan_steps(state: ResearchState) -> ResearchState:
             system=PLANNER_PROMPT,
             user=f"Research query: {state['query']}",
             max_tokens=512,
+            require_json=True
         )
         raw = raw.strip()
         if raw.startswith("```"):
@@ -245,6 +200,12 @@ def plan_steps(state: ResearchState) -> ResearchState:
             if raw.startswith("json"):
                 raw = raw[4:]
         raw = raw.strip()
+
+        # Robust fallback using regex
+        import re
+        match = re.search(r"(\[.*\]|\{.*\})", raw, re.DOTALL)
+        if match:
+            raw = match.group(1)
 
         sub_queries = json.loads(raw)
         if not isinstance(sub_queries, list):
@@ -326,13 +287,20 @@ def validate_sources(state: ResearchState) -> ResearchState:
     )
 
     try:
-        raw = _call_llm(system=VALIDATOR_SYSTEM_PROMPT, user=user_prompt, max_tokens=400)
+        raw = _call_llm(system=VALIDATOR_SYSTEM_PROMPT, user=user_prompt, max_tokens=400, require_json=True)
         raw = raw.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
             raw = raw.strip()
+            
+        # Robust fallback using regex
+        import re
+        match = re.search(r"(\[.*\]|\{.*\})", raw, re.DOTALL)
+        if match:
+            raw = match.group(1)
+            
         result = json.loads(raw)
         quality_score = float(result.get("quality_score", 5.0))
     except Exception as e:
@@ -447,13 +415,20 @@ def review_report(state: ResearchState) -> ResearchState:
     )
 
     try:
-        raw = _call_llm(system=REVIEWER_SYSTEM_PROMPT, user=user_prompt, max_tokens=600)
+        raw = _call_llm(system=REVIEWER_SYSTEM_PROMPT, user=user_prompt, max_tokens=600, require_json=True)
         raw = raw.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
             raw = raw.strip()
+        
+        # Robust fallback using regex
+        import re
+        match = re.search(r"(\[.*\]|\{.*\})", raw, re.DOTALL)
+        if match:
+            raw = match.group(1)
+
         result = json.loads(raw)
         review_passed = bool(result.get("review_passed", True))
         review_score  = int(result.get("review_score", 7))

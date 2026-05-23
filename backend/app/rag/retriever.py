@@ -6,7 +6,7 @@ import os
 from typing import List
 
 from langchain_community.vectorstores import Chroma
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 
 from .embeddings import get_embedding_function
 

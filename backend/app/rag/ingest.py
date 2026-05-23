@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 from typing import List
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 
 from .embeddings import get_embedding_function
 
