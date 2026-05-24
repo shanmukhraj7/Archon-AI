@@ -1,8 +1,8 @@
-# Archon AI — v2.0 (Local Edition)
+# Archon AI — v3.0 (Cloud Edition)
 
 A production-grade **multi-agent GenAI research platform** that deploys 6 specialized AI agents in a self-correcting LangGraph pipeline to search the web, validate sources, and synthesize structured, exportable research reports — powered by Hybrid RAG, RAGAS evaluation, and a conditional ReAct review loop. 
 
-**This version has been fully migrated to use 100% Local LLMs via Ollama to avoid cloud API rate limits and costs!**
+**This version has been fully migrated to use Cloud LLMs (Gemini 2.0 Flash / Groq) and PostgreSQL for scalable, robust deployments.**
 
 ---
 
@@ -16,7 +16,7 @@ It will:
 1. Break the query into sub-tasks (planner agent)
 2. Search the web for current information (via Tavily)
 3. Search your uploaded documents (via RAG + ChromaDB)
-4. Reason over retrieved context using **local Llama 3.2**
+4. Reason over retrieved context using **Gemini 2.0 Flash / Groq**
 5. Produce a structured report with sections, tables, and a summary
 6. Let you export the report as a PDF
 
@@ -40,7 +40,7 @@ Orchestrator Agent (LangGraph)
 Structured Output Engine
     │  ├── Markdown report (sections, tables, summary)
     │  ├── PDF export (WeasyPrint)
-    │  └── History store (SQLite)
+    │  └── History store (PostgreSQL)
     │
     ▼
 React Frontend (report viewer + upload panel + history sidebar)
@@ -54,7 +54,7 @@ React Frontend (report viewer + upload panel + history sidebar)
 |---|---|
 | Backend | Python 3.11+, FastAPI |
 | Agent orchestration | LangChain + LangGraph |
-| LLM | **Ollama (llama3.2)** (100% Local & Free) |
+| LLM | **Gemini 2.0 Flash (Primary) / Groq Llama-3.1 (Fallback)** |
 | Vector DB & Retrieval | ChromaDB (local) + rank-bm25 (Keyword search) |
 | Web search | Tavily Search API |
 | Document parsing | PyMuPDF, python-docx, LangChain splitters |
@@ -62,7 +62,7 @@ React Frontend (report viewer + upload panel + history sidebar)
 | Frontend | React 18 + React Router + Vite + TailwindCSS |
 | Report rendering | React-Markdown + remark-gfm |
 | PDF export | WeasyPrint |
-| Database | SQLite (async via aiosqlite) |
+| Database | PostgreSQL (async via asyncpg) |
 | Infrastructure | Docker + Docker Compose |
 
 ---
@@ -94,10 +94,10 @@ archon-ai/
 │   │   ├── memory/
 │   │   │   └── store.py             # In-memory history for contextual multi-turn
 │   │   └── db/
-│   │       └── models.py            # SQLite queries + agent metadata persistence
+│   │       └── models.py            # Postgres queries + agent metadata persistence
 │   ├── requirements.txt
 │   └── Dockerfile
-├── data/                            # Auto-created via docker volume (SQLite + Chroma DB)
+├── data/                            # Auto-created via docker volume (Chroma DB)
 ├── frontend/
 │   ├── index.html
 │   ├── vite.config.js
@@ -146,38 +146,30 @@ archon-ai/
 
 ## End-to-End Setup Instructions
 
-### Step 1 — Install and Configure Ollama (Local LLM)
-Since this project uses 100% local AI models to bypass rate limits, you must run Ollama on your host machine.
+### Step 1 — Configure API Keys (`.env`)
+You need API keys for the LLMs (both are free) and Web Search.
 
-1. Install Ollama:
-   - **Mac/Linux**: `brew install ollama` (or download from [ollama.com](https://ollama.com))
-   - **Windows**: Download the installer from ollama.com
-2. Start the Ollama background service:
-   - `ollama serve`
-3. Download the Llama 3.2 model:
-   - `ollama pull llama3.2`
-
-### Step 2 — Configure API Keys (`.env`)
-You only need an API key for the Web Search capability.
-
-1. Go to https://app.tavily.com, sign up for a free account, and copy your API Key.
-2. In the root of the project, copy `.env.example` to `.env`:
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) to get a free **Gemini** API Key.
+2. Go to [Groq Console](https://console.groq.com/keys) to get a free **Groq** API Key.
+3. Go to [Tavily](https://app.tavily.com) to get a free **Web Search** API Key.
+4. In the root of the project, copy `.env.example` to `.env`:
    ```bash
    cp .env.example .env
    ```
-3. Open `.env` and fill it in:
+5. Open `.env` and fill it in:
    ```env
+   GEMINI_API_KEY="your_gemini_api_key_here"
+   GROQ_API_KEY="your_groq_api_key_here"
    TAVILY_API_KEY="tvly-your-tavily-api-key"
-   CHROMA_PERSIST_DIR="./data/chroma"
-   SQLITE_DB_PATH="./data/history.db"
    
-   # Note: For Docker, host.docker.internal allows the backend container to reach Ollama on the host machine.
-   OLLAMA_BASE_URL="http://host.docker.internal:11434"
+   # Docker handles the Database URL automatically
+   DATABASE_URL="postgresql+asyncpg://archon:archonsecret@db:5432/archon_db"
+   JWT_SECRET="make-up-a-random-string"
    ```
 
-### Step 3 — Run the Full Stack via Docker
+### Step 2 — Run the Full Stack via Docker
 
-You don't need to manually install Python or Node! Docker handles it all.
+You don't need to manually install Python, Node, or PostgreSQL! Docker handles it all.
 
 ```bash
 docker compose up --build
@@ -186,8 +178,7 @@ docker compose up --build
 **Port Numbers:**
 - 👉 **Frontend UI**: [http://localhost:5173](http://localhost:5173) (Open this in your browser!)
 - **Backend API**: http://localhost:8000
-- **Interactive API docs**: http://localhost:8000/docs
-- **Ollama Engine**: http://localhost:11434
+- **Database (PostgreSQL)**: localhost:5432
 
 *Note: You must access the application via port **5173**. Accessing port 8000 in your browser will result in a raw JSON "Not Found" message since it's an API server.*
 
@@ -195,9 +186,9 @@ docker compose up --build
 
 ## How to Use
 
-1. **Create an account** — Go to `http://localhost:5173/register` and make an account (data is stored locally in SQLite).
+1. **Create an account** — Go to `http://localhost:5173/register` and make an account (data is stored securely in PostgreSQL).
 2. **Submit a query** — From the **Research** page, type your research question in the text box and press "Research →"
-3. **Wait for the pipeline** — The multi-agent system will systematically plan, research, validate, summarize, and write the report. *(Note: Because local models run on your CPU/GPU, a full 6-agent report generation will take about 1-2 minutes depending on your hardware).*
+3. **Wait for the pipeline** — The multi-agent system will systematically plan, research, validate, summarize, and write the report. *(Note: Using Gemini 2.0 Flash, a full 6-agent report generation will typically take around 15-30 seconds).*
 4. **Browse history** — Use the **History** and **Archives** pages to view past queries, or check the **Drafts** page for ongoing work.
 5. **Analyze & Synthesize** — Use the dedicated **Analysis** and **Synthesis** pages to drill down into specific agent outputs and metrics.
 6. **Upload documents** — Upload PDFs or DOCX files for RAG indexing; they get chunked and indexed into ChromaDB.
