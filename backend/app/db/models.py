@@ -1,7 +1,9 @@
 """
-SQLite schema and CRUD helpers using SQLAlchemy async.
+Database schema and CRUD helpers using SQLAlchemy async.
+Supports PostgreSQL (asyncpg) and SQLite (aiosqlite) via DATABASE_URL env var.
 """
 
+import os
 import uuid
 from datetime import datetime
 from typing import Optional, List
@@ -53,27 +55,51 @@ _engine = None
 _async_session = None
 
 
-def get_engine(db_path: str):
+def _get_database_url() -> str:
+    """
+    Resolve the async database URL from environment variables.
+
+    Priority:
+      1. DATABASE_URL  — full DSN (Postgres on Docker/GCP/cloud)
+      2. SQLITE_DB_PATH — legacy local SQLite path
+      3. /tmp/history.db  — hard fallback for local dev
+
+    Postgres DSN variants are normalised to postgresql+asyncpg://.
+    """
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url:
+        # Fix plain postgres:// or postgresql:// (no async driver specified)
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return db_url
+    # Fallback: SQLite for local development without Postgres
+    sqlite_path = os.environ.get("SQLITE_DB_PATH", "/tmp/history.db")
+    return f"sqlite+aiosqlite:///{sqlite_path}"
+
+
+def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_async_engine(
-            f"sqlite+aiosqlite:///{db_path}",
-            echo=False,
-            connect_args={"check_same_thread": False},
-        )
+        url = _get_database_url()
+        is_sqlite = url.startswith("sqlite")
+        connect_args = {"check_same_thread": False} if is_sqlite else {}
+        _engine = create_async_engine(url, echo=False, connect_args=connect_args)
     return _engine
 
 
-def get_session_factory(db_path: str):
+def get_session_factory():
     global _async_session
     if _async_session is None:
-        engine = get_engine(db_path)
+        engine = get_engine()
         _async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return _async_session
 
 
-async def init_db(db_path: str):
-    engine = get_engine(db_path)
+async def init_db():
+    """Create all tables if they don't exist (runs at startup)."""
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

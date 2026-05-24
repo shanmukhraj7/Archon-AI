@@ -45,7 +45,6 @@ from .rag.ingest import ingest_document
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-DB_PATH = os.getenv("SQLITE_DB_PATH", "/tmp/history.db")
 CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "/tmp/chroma")
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,12 +69,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await init_db(DB_PATH)
+    await init_db()
 
 
 def get_db():
-    factory = get_session_factory(DB_PATH)
-    return factory
+    return get_session_factory()
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────

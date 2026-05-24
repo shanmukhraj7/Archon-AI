@@ -1,6 +1,24 @@
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: archon_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: archon
+      POSTGRES_PASSWORD: archonsecret
+      POSTGRES_DB: archon_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U archon -d archon_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     container_name: research_backend
@@ -11,11 +29,12 @@ services:
     env_file:
       - .env
     environment:
+      - DATABASE_URL=postgresql+asyncpg://archon:archonsecret@db:5432/archon_db
       - CHROMA_PERSIST_DIR=/app/data/chroma
-      - SQLITE_DB_PATH=/app/data/history.db
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - UPLOAD_DIR=/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -28,3 +47,6 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
     restart: unless-stopped
+
+volumes:
+  postgres_data:

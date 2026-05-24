@@ -59,53 +59,101 @@ class ResearchState(TypedDict):
 
 _FALLTHROUGH_PHRASES = (
     "quota", "rate limit", "429", "exceeded", "too many requests",
-    "resource exhausted", "billing",
+    "resource exhausted", "billing", "safety",
 )
+
 
 def _is_quota_error(e: Exception) -> bool:
     return any(p in str(e).lower() for p in _FALLTHROUGH_PHRASES)
 
 
 def _call_llm(system: str, user: str, max_tokens: int = 4096, require_json: bool = False) -> str:
-    try:
-        logger.info(f"Trying LLM provider: Ollama (llama3.2)")
-        result = _call_ollama(system, user, max_tokens, require_json)
-        logger.info(f"Success with provider: Ollama")
-        return result
-    except Exception as e:
-        logger.warning(f"Ollama failed. Is it running? Error: {e}")
-        raise RuntimeError(f"Ollama failed. Please run 'ollama serve' and 'ollama pull llama3.2'. Error: {e}")
+    """
+    Smart LLM router: Gemini Flash → Groq llama-3.1-8b-instant → error.
+    Override with LLM_PROVIDER env var: 'gemini', 'groq', or 'auto' (default).
+    """
+    provider = os.getenv("LLM_PROVIDER", "auto").lower()
+
+    providers_map = {
+        "gemini": [_call_gemini],
+        "groq":   [_call_groq],
+        "auto":   [_call_gemini, _call_groq],
+    }
+    chain = providers_map.get(provider, [_call_gemini, _call_groq])
+
+    last_err = None
+    for fn in chain:
+        try:
+            name = fn.__name__.replace("_call_", "")
+            logger.info(f"Trying LLM provider: {name}")
+            result = fn(system, user, max_tokens, require_json)
+            logger.info(f"Success with provider: {name}")
+            return result
+        except Exception as e:
+            last_err = e
+            if _is_quota_error(e):
+                logger.warning(
+                    f"{fn.__name__} hit quota/rate-limit — falling through. Error: {e}"
+                )
+                continue
+            # Non-quota errors (bad key, network, etc.) bubble immediately
+            logger.warning(f"{fn.__name__} failed with non-quota error: {e}")
+            raise
+
+    raise RuntimeError(
+        f"All LLM providers exhausted. Last error: {last_err}. "
+        "Check GEMINI_API_KEY and GROQ_API_KEY environment variables."
+    )
 
 
 # ── Provider implementations ──────────────────────────────────────────────────
 
-def _call_ollama(system: str, user: str, max_tokens: int, require_json: bool = False) -> str:
-    import requests
-    import os
+def _call_gemini(system: str, user: str, max_tokens: int, require_json: bool = False) -> str:
+    """Call Google Gemini Flash via google-generativeai SDK."""
+    import google.generativeai as genai
 
-    # Use OLLAMA_BASE_URL if provided, else default to host.docker.internal
-    base_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-    url = f"{base_url}/api/chat"
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
 
-    payload = {
-        "model": "llama3.2",
-        "messages": [
+    genai.configure(api_key=api_key)
+    generation_config = genai.GenerationConfig(
+        max_output_tokens=max_tokens,
+        temperature=0.3,
+        response_mime_type="application/json" if require_json else "text/plain",
+    )
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=system,
+        generation_config=generation_config,
+    )
+    response = model.generate_content(user)
+    return response.text
+
+
+def _call_groq(system: str, user: str, max_tokens: int, require_json: bool = False) -> str:
+    """Call Groq (llama-3.1-8b-instant) via the official Groq SDK."""
+    from groq import Groq
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not set")
+
+    client = Groq(api_key=api_key)
+    kwargs: dict = dict(
+        model="llama-3.1-8b-instant",
+        messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": user}
+            {"role": "user",   "content": user},
         ],
-        "options": {
-            "temperature": 0.3,
-            "num_predict": max_tokens
-        },
-        "stream": False
-    }
-    
+        max_tokens=max_tokens,
+        temperature=0.3,
+    )
     if require_json:
-        payload["format"] = "json"
+        kwargs["response_format"] = {"type": "json_object"}
 
-    response = requests.post(url, json=payload, timeout=120)
-    response.raise_for_status()
-    return response.json()["message"]["content"]
+    chat = client.chat.completions.create(**kwargs)
+    return chat.choices[0].message.content
 
 
 
