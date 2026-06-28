@@ -1,4 +1,4 @@
-# Archon AI — v3.0 (Cloud Edition)
+# Archon AI 
 
 
 A production-grade **multi-agent GenAI research platform** that deploys 6 specialized AI agents in a self-correcting LangGraph pipeline to search the web, validate sources, and synthesize structured, exportable research reports — powered by Hybrid RAG, RAGAS evaluation, and a conditional ReAct review loop. 
